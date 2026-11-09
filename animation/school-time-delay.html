@@ -18,8 +18,10 @@ html,body{height:100%;background:#0e1726;overflow:hidden;font-family:var(--font)
 #stage.paused #caption,#stage.paused #intro *,#stage.paused #intro *::before{animation-play-state:running!important}
 
 /* ---------- scenes ---------- */
-.scene{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .6s ease,visibility 0s linear .6s}
+/* .active = 正在渲染（含转场中退出的场景）；.on = 当前场景，叠在上层淡入 */
+.scene{position:absolute;inset:0;opacity:0;visibility:hidden;z-index:1}
 .scene.active{opacity:1;visibility:visible;transition:opacity .6s ease}
+.scene.active.on{z-index:2}
 .scene .bg{position:absolute;inset:0}
 
 /* entrance helpers */
@@ -639,12 +641,16 @@ const fmt=ms=>{const s=Math.floor(ms/1000);return String(Math.floor(s/60)).padSt
 const sceneAt=t=>{for(let i=scenes.length-1;i>=0;i--) if(t>=scenes[i].start) return i;return 0;};
 
 function activate(i,offset){
-  scenes.forEach((s,j)=>{if(j!==i) s.node.classList.remove('active');});
+  scenes.forEach((s,j)=>{
+    if(j===i) return;
+    if(s.node.classList.contains('on')){s.node.classList.remove('on');s.leaveAt=elapsed;}
+    else s.node.classList.remove('active');
+  });
   const s=scenes[i];
-  s.node.classList.remove('active');
+  s.node.classList.remove('active','on');
   if(s.reset) s.reset();
   void s.node.offsetWidth;
-  s.node.classList.add('active');
+  s.node.classList.add('active','on');
   if(offset>40&&s.node.getAnimations){
     s.node.getAnimations({subtree:true}).forEach(a=>{try{a.currentTime=(a.currentTime||0)+offset;}catch(e){}});
   }
@@ -653,6 +659,9 @@ function activate(i,offset){
 function render(){
   const i=sceneAt(Math.min(elapsed,TOTAL-1));
   if(i!==cur) activate(i,elapsed-scenes[i].start);
+  scenes.forEach((sc,j)=>{
+    if(j!==i&&sc.node.classList.contains('active')&&(elapsed-sc.leaveAt>650||elapsed<sc.leaveAt)) sc.node.classList.remove('active');
+  });
   const s=scenes[i],local=elapsed-s.start;
   if(s.tick) s.tick(local);
   let txt='';for(const [t,c] of s.caps) if(local>=t) txt=c;
@@ -738,6 +747,26 @@ $('#btnPlay').innerHTML=ICON.play;$('#btnSound').innerHTML=ICON.on;
 
 // URL params: ?autoplay  ?t=毫秒  ?pause  (方便预览/截图)
 const q=new URLSearchParams(location.search);
+if(q.has('capture')){
+  // 逐帧导出模式：时间完全由 window.__frame(ms) 驱动，所有 CSS 动画按帧精确定位
+  stage.classList.remove('intro');$('#intro').style.display='none';
+  $('#controls').style.display='none';
+  stage.style.borderRadius='0';stage.style.boxShadow='none';
+  soundOn=false;
+  const birth=new WeakMap();
+  window.__duration=TOTAL;
+  window.__frame=t=>{
+    elapsed=clamp(t,0,TOTAL-1);
+    render();
+    for(const a of document.getAnimations()){
+      if(!birth.has(a)) birth.set(a,t);
+      a.pause();
+      a.currentTime=Math.max(0,t-birth.get(a));
+    }
+  };
+  window.__frame(0);
+  return;
+}
 if(q.has('autoplay')||q.has('t')){
   stage.classList.remove('intro');$('#intro').style.display='none';
   soundOn=false;$('#btnSound').innerHTML=ICON.off;
