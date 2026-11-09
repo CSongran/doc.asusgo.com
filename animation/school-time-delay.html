@@ -1,0 +1,752 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>上学时间推迟啦！临泉多所学校调整到校时间</title>
+<style>
+:root{
+  --red:#e8462f;
+  --ink:#1f2a44;
+  --font:"PingFang SC","Hiragino Sans GB","Microsoft YaHei","Noto Sans CJK SC","Noto Sans SC","Source Han Sans SC","WenQuanYi Micro Hei",sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%;background:#0e1726;overflow:hidden;font-family:var(--font);-webkit-font-smoothing:antialiased}
+#viewport{position:fixed;inset:0;display:flex;align-items:center;justify-content:center}
+#stage{position:relative;flex:none;width:1280px;height:720px;overflow:hidden;border-radius:14px;background:#fff;box-shadow:0 30px 80px rgba(0,0,0,.5);transform-origin:center;user-select:none}
+#stage.paused *,#stage.paused *::before,#stage.paused *::after{animation-play-state:paused!important}
+#stage.paused #caption,#stage.paused #intro *,#stage.paused #intro *::before{animation-play-state:running!important}
+
+/* ---------- scenes ---------- */
+.scene{position:absolute;inset:0;opacity:0;visibility:hidden;transition:opacity .6s ease,visibility 0s linear .6s}
+.scene.active{opacity:1;visibility:visible;transition:opacity .6s ease}
+.scene .bg{position:absolute;inset:0}
+
+/* entrance helpers */
+.scene .pop,.scene .fly-up,.scene .slide-in,.scene .slide-in-r,.scene .rise,.scene .stamp,.scene .fade-in{opacity:0}
+.scene.active .pop{animation:pop .7s cubic-bezier(.34,1.56,.64,1) var(--d,0s) both}
+.scene.active .fly-up{animation:flyUp .7s ease-out var(--d,0s) both}
+.scene.active .slide-in{animation:slideIn .7s cubic-bezier(.2,.9,.3,1.1) var(--d,0s) both}
+.scene.active .slide-in-r{animation:slideInR .7s cubic-bezier(.2,.9,.3,1.1) var(--d,0s) both}
+.scene.active .rise{animation:rise .8s cubic-bezier(.3,1.4,.6,1) var(--d,0s) both}
+.scene.active .stamp{animation:stampIn .5s cubic-bezier(.5,0,.6,1.4) var(--d,0s) both}
+.scene.active .fade-in{animation:fadeIn .8s ease var(--d,0s) both}
+@keyframes pop{0%{opacity:0;transform:scale(.3)}100%{opacity:1;transform:scale(1)}}
+@keyframes flyUp{from{opacity:0;transform:translateY(40px)}to{opacity:1;transform:none}}
+@keyframes slideIn{from{opacity:0;transform:translateX(-80px)}to{opacity:1;transform:none}}
+@keyframes slideInR{from{opacity:0;transform:translateX(90px)}to{opacity:1;transform:none}}
+@keyframes rise{from{opacity:0;transform:translateY(120px) scale(.8)}to{opacity:1;transform:none}}
+@keyframes stampIn{0%{opacity:0;transform:scale(2.6) rotate(-4deg)}100%{opacity:1;transform:scale(1) rotate(-12deg)}}
+@keyframes fadeIn{from{opacity:0}to{opacity:1}}
+@keyframes fadeOut{from{opacity:1}to{opacity:0}}
+@keyframes spin{to{transform:rotate(360deg)}}
+@keyframes blink{50%{opacity:0}}
+@keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
+@keyframes pulse{0%,100%{transform:scale(1)}50%{transform:scale(1.12)}}
+
+/* ---------- HUD / caption / controls ---------- */
+#hud{position:absolute;top:20px;left:24px;z-index:40;display:flex;align-items:center;gap:12px;pointer-events:none}
+.hud-tag{background:var(--red);color:#fff;font-weight:900;font-size:18px;padding:6px 14px;border-radius:8px;letter-spacing:2px;box-shadow:0 4px 10px rgba(232,70,47,.35)}
+.hud-title{background:rgba(255,255,255,.88);color:var(--ink);font-weight:700;font-size:18px;padding:6px 14px;border-radius:8px}
+#caption{position:absolute;left:50%;bottom:50px;transform:translateX(-50%);z-index:50;max-width:1120px;width:max-content;background:rgba(15,23,42,.78);color:#fff;font-size:26px;font-weight:600;line-height:1.45;padding:10px 30px;border-radius:999px;text-align:center;pointer-events:none;box-shadow:0 8px 24px rgba(0,0,0,.2)}
+#caption:empty{display:none}
+#caption.show{animation:capIn .45s ease-out}
+@keyframes capIn{from{opacity:0;transform:translate(-50%,12px)}to{opacity:1;transform:translate(-50%,0)}}
+#controls{position:absolute;left:0;right:0;bottom:0;height:42px;z-index:90;display:flex;align-items:center;gap:10px;padding:0 14px;background:linear-gradient(transparent,rgba(0,0,0,.5))}
+#controls button{width:30px;height:30px;border:0;border-radius:8px;background:rgba(255,255,255,.18);color:#fff;cursor:pointer;display:grid;place-items:center;flex:none}
+#controls button:hover{background:rgba(255,255,255,.32)}
+#controls svg{width:18px;height:18px;fill:currentColor}
+#progress{flex:1;display:flex;gap:4px;height:22px;align-items:center;cursor:pointer}
+.seg{position:relative;height:6px;background:rgba(255,255,255,.3);border-radius:3px;overflow:hidden}
+.seg i{position:absolute;left:0;top:0;bottom:0;width:0;background:#ffd23f;border-radius:3px}
+#progress:hover .seg{height:9px}
+#time{color:#fff;font-size:13px;font-variant-numeric:tabular-nums;min-width:86px;text-align:right}
+
+/* ---------- intro & end ---------- */
+#intro{position:absolute;inset:0;z-index:100;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:22px;color:#fff;text-align:center;background:radial-gradient(circle at 50% 120%,#ffd23f 0,#ff9a3c 30%,#ff5e62 70%,#c2185b 100%);cursor:pointer}
+#intro h1{font-size:88px;font-weight:900;letter-spacing:4px;text-shadow:0 8px 0 rgba(0,0,0,.15)}
+#intro p{font-size:26px;opacity:.95}
+#intro .playbig{position:relative;width:118px;height:118px;border-radius:50%;background:#fff;display:grid;place-items:center;box-shadow:0 14px 40px rgba(0,0,0,.25);transition:transform .2s}
+#intro .playbig::before{content:"";position:absolute;inset:-10px;border-radius:50%;border:4px solid rgba(255,255,255,.7);animation:ringPulse 1.8s ease-out infinite}
+#intro:hover .playbig{transform:scale(1.07)}
+#intro .playbig svg{width:52px;height:52px;fill:var(--red);margin-left:8px}
+#intro small{font-size:16px;opacity:.8}
+@keyframes ringPulse{from{transform:scale(.9);opacity:1}to{transform:scale(1.4);opacity:0}}
+#stage.intro #hud,#stage.intro #caption{display:none}
+#end{position:absolute;inset:0;z-index:80;display:grid;place-items:start;padding:210px 0 0 175px;background:rgba(15,23,42,.35);opacity:0;pointer-events:none;transition:opacity .6s}
+#stage.ended #end{opacity:1;pointer-events:auto;transition-delay:1.2s}
+#end button{display:flex;align-items:center;gap:10px;font:800 28px var(--font);color:var(--red);background:#fff;border:0;border-radius:999px;padding:16px 36px;cursor:pointer;box-shadow:0 14px 40px rgba(0,0,0,.25)}
+#end button svg{width:30px;height:30px;fill:currentColor}
+
+/* ---------- shared drawings ---------- */
+.kid{display:block;width:100%;height:auto;overflow:visible}
+.kid .arm-b,.kid .arm-f{transform-origin:50.5px 60px}
+.kid .leg-b,.kid .leg-f{transform-origin:50.5px 100px}
+.kid .leg-f{--a:24deg}.kid .leg-b{--a:-24deg}.kid .arm-f{--a:-22deg}.kid .arm-b{--a:22deg}
+.kid .limb{animation:swing .5s ease-in-out infinite alternate}
+.kid .kid-bob{animation:bob .5s ease-in-out infinite}
+.kid.run{transform:rotate(7deg)}
+.kid.run .leg-f{--a:42deg}.kid.run .leg-b{--a:-42deg}.kid.run .arm-f{--a:-58deg}.kid.run .arm-b{--a:58deg}
+.kid.run .limb{animation-duration:.28s}
+.kid.run .kid-bob{animation:bobRun .28s ease-in-out infinite}
+@keyframes swing{from{transform:rotate(var(--a))}to{transform:rotate(calc(var(--a) * -1))}}
+@keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-3px)}}
+@keyframes bobRun{0%,100%{transform:translateY(0)}50%{transform:translateY(-8px)}}
+.school .flag{transform-origin:171px 15px;animation:flag 1.4s ease-in-out infinite alternate}
+@keyframes flag{from{transform:skewY(-5deg) scaleX(.9)}to{transform:skewY(5deg) scaleX(1)}}
+.clock{display:block;width:100%;height:auto}
+.cloud{position:absolute;width:160px;height:50px;background:#fff;border-radius:50px;opacity:.92;animation:drift 14s ease-in-out infinite alternate}
+.cloud::before,.cloud::after{content:"";position:absolute;background:#fff;border-radius:50%}
+.cloud::before{width:70px;height:70px;top:-34px;left:24px}
+.cloud::after{width:90px;height:90px;top:-48px;left:62px}
+@keyframes drift{from{transform:translateX(0)}to{transform:translateX(90px)}}
+.school-label{position:absolute;top:82px;left:60px;display:flex;align-items:center;gap:12px;font-size:40px;font-weight:900;color:var(--ink)}
+.school-label .num{background:var(--ink);color:#ffd23f;font-size:22px;padding:4px 10px;border-radius:8px}
+.notice{position:absolute;background:#fff;border-radius:24px;box-shadow:0 18px 44px rgba(30,40,80,.16);overflow:hidden}
+.notice-head{display:flex;align-items:center;gap:14px;padding:14px 24px;background:linear-gradient(90deg,#1e88e5,#42a5f5);color:#fff}
+.notice.green .notice-head{background:linear-gradient(90deg,#15803d,#22c55e)}
+.avatar{width:50px;height:50px;border-radius:14px;background:#fff;color:#1e88e5;font-weight:900;display:grid;place-items:center;font-size:17px}
+.notice.green .avatar{color:#15803d}
+.notice-head b{display:block;font-size:22px}
+.notice-head small{font-size:14px;opacity:.9}
+.notice-body{padding:18px 28px 22px;font-size:21px;line-height:1.62;color:var(--ink)}
+.notice-body mark{background:linear-gradient(transparent 55%,#ffe066 55%);color:#c2410c;font-weight:800;padding:0 2px}
+.caret{display:inline-block;width:2px;height:1.05em;background:#1e88e5;vertical-align:-3px;margin-left:2px;animation:blink 1s steps(1) infinite}
+.clock-block{position:absolute;width:440px;text-align:center}
+.clock-block .clock-wrap{width:190px;margin:0 auto;filter:drop-shadow(0 12px 18px rgba(0,0,0,.15))}
+.digital{display:inline-block;margin-top:12px;font:800 46px/1 "DIN Alternate","Roboto Mono","DejaVu Sans Mono",monospace;color:var(--ink);background:#fff;padding:8px 22px;border-radius:16px;box-shadow:0 8px 20px rgba(0,0,0,.1);transition:color .3s}
+.clock-block.done .digital{color:var(--red);animation:pulse .5s ease-in-out 2}
+.clock-cap{margin-top:12px;font-size:27px;color:var(--ink);font-weight:700}
+.clock-cap b{color:var(--red);font-size:34px}
+.bubble{position:absolute;background:#fff;border-radius:20px;padding:12px 20px;font-size:24px;font-weight:800;box-shadow:0 10px 24px rgba(0,0,0,.14);white-space:nowrap}
+.bubble::after{content:"";position:absolute;left:34px;bottom:-14px;border:8px solid transparent;border-top:12px solid #fff;border-left:12px solid #fff}
+
+/* ---------- scene 1 ---------- */
+.s1 .bg{background:linear-gradient(#ffb36b 0%,#ffd9a0 45%,#fff1d6 100%)}
+.s1 .sunwrap{position:absolute;left:50%;bottom:110px;width:200px;height:200px;margin-left:-100px}
+.s1.active .sunwrap{animation:sunrise 3s ease-out both}
+@keyframes sunrise{from{transform:translateY(260px)}to{transform:none}}
+.s1 .rays{position:absolute;inset:-110px;border-radius:50%;background:repeating-conic-gradient(rgba(255,214,90,.55) 0 7deg,transparent 7deg 18deg);-webkit-mask:radial-gradient(circle,#000 30%,transparent 70%);mask:radial-gradient(circle,#000 30%,transparent 70%);animation:spin 24s linear infinite}
+.s1 .sun{position:absolute;inset:0;border-radius:50%;background:radial-gradient(circle,#fff6b0 0 38%,#ffd23f 40% 72%,#ffb627 74%);box-shadow:0 0 80px 30px rgba(255,210,63,.55)}
+.s1 .hills{position:absolute;left:0;bottom:0;width:100%;height:230px}
+.s1 .c1{left:80px;top:150px}.s1 .c2{left:880px;top:110px;transform:scale(.8);animation-duration:18s}.s1 .c3{left:520px;top:70px;opacity:.7;animation-duration:22s}
+.s1 .school-wrap{position:absolute;right:60px;bottom:108px;width:300px}
+.s1 .alarm{position:absolute;left:100px;bottom:126px;width:160px}
+.s1 .alarm svg{display:block;width:100%;transform-origin:50% 90%;animation:wobble 3s ease-in-out infinite}
+@keyframes wobble{0%,40%,100%{transform:rotate(0)}5%,15%,25%,35%{transform:rotate(-9deg)}10%,20%,30%{transform:rotate(9deg)}}
+.s1 .title{position:absolute;top:104px;left:0;right:0;text-align:center}
+.s1 .t-small{display:inline-block;font-size:28px;font-weight:800;color:#8a3b12;background:rgba(255,255,255,.75);padding:6px 22px;border-radius:999px}
+.s1 h1{margin-top:12px;font-size:124px;font-weight:900;line-height:1.1;color:var(--ink);letter-spacing:4px;
+  text-shadow:5px 0 #fff,-5px 0 #fff,0 5px #fff,0 -5px #fff,4px 4px #fff,-4px -4px #fff,4px -4px #fff,-4px 4px #fff,0 14px 0 rgba(120,50,0,.18)}
+.s1 h1 span{display:inline-block}
+.s1 h1 .hot{color:var(--red)}
+.s1 .tags{margin-top:18px;display:flex;justify-content:center;gap:14px}
+.tag{display:inline-block;font-size:26px;font-weight:800;color:#fff;background:#1e88e5;padding:6px 20px;border-radius:12px;box-shadow:0 6px 0 rgba(0,0,0,.12)}
+.tag.t2{background:#16a34a}.tag.t3{background:#f97316}
+
+/* ---------- scene 2 ---------- */
+.s2 .bg{background:linear-gradient(160deg,#e8f1ff 0%,#f5f9ff 60%,#fff 100%)}
+.s2 .bg::after{content:"";position:absolute;inset:0;background-image:radial-gradient(rgba(30,136,229,.12) 2px,transparent 2px);background-size:34px 34px}
+.s2 .head{position:absolute;top:84px;left:0;right:0;text-align:center;font-size:44px;font-weight:900;color:var(--ink)}
+.date-pill{display:inline-block;background:var(--red);color:#fff;padding:2px 18px;border-radius:12px;margin-right:14px}
+.s2 .doc{position:absolute;left:150px;top:180px;width:280px}
+.s2 .doc svg{display:block;width:100%;transform:rotate(-4deg)}
+.s2 .doc-stamp{position:absolute;right:-34px;bottom:26px;width:126px;height:126px;border:6px solid #d62828;border-radius:50%;display:grid;place-items:center;color:#d62828;font-size:25px;font-weight:900;line-height:1.1;text-align:center;background:rgba(255,255,255,.4)}
+.s2 .doc-stamp::before{content:"";position:absolute;inset:6px;border:2px solid #d62828;border-radius:50%}
+.s2 .cards{position:absolute;left:520px;top:188px;width:650px}
+.s2 .card{display:flex;align-items:center;gap:22px;height:110px;background:#fff;border-radius:22px;padding:0 28px;margin-bottom:22px;box-shadow:0 12px 30px rgba(30,60,120,.12)}
+.s2 .ico{width:76px;height:76px;flex:none;border-radius:22px;display:grid;place-items:center}
+.s2 .ico svg{width:44px;height:44px}
+.s2 .card b{display:block;font-size:32px;color:var(--ink)}
+.s2 .card p{font-size:20px;color:#64748b;margin-top:4px}
+
+/* ---------- scene 3 ---------- */
+.s3 .bg{background:linear-gradient(#bfe3ff 0%,#e6f4ff 60%,#fff8e7 100%)}
+.s3 .c1{left:420px;top:60px;transform:scale(.7)}
+.s3 .ground{position:absolute;left:0;right:0;top:470px;bottom:0;background:#9ad66f}
+.s3 .road{position:absolute;left:0;right:0;top:540px;height:70px;background:#cfd8e3;border-top:6px solid #a3b1c2}
+.s3 .road::after{content:"";position:absolute;left:0;right:0;top:30px;height:5px;background:repeating-linear-gradient(90deg,#fff 0 40px,transparent 40px 80px)}
+.s3 .clock-block{left:70px;top:150px}
+.s3 .notice{left:560px;top:96px;width:660px}
+.s3 .notice-body{min-height:170px}
+.s3 .gate{position:absolute;left:1000px;top:404px;width:200px}
+.s3 .gate svg{display:block;width:100%}
+.s3 .walker{position:absolute;left:0;top:452px;width:72px;opacity:0}
+.s3.active .walker{animation:walkIn 6s linear 1s both}
+@keyframes walkIn{0%{opacity:1;transform:translateX(-120px)}90%{opacity:1;transform:translateX(1050px)}100%{opacity:0;transform:translateX(1066px) scale(.92)}}
+.s3 .read{left:700px;top:404px;color:#1e88e5;display:flex;align-items:center;gap:10px}
+.s3 .read svg{width:48px}
+
+/* ---------- scene 4 ---------- */
+.s4 .bg{background:linear-gradient(#cdeffd 0%,#effaff 70%,#fff 100%)}
+.s4 .c1{left:560px;top:90px;transform:scale(.6)}
+.s4 .grass{position:absolute;left:0;right:0;top:440px;bottom:0;background:#86c96a}
+.s4 .track{position:absolute;left:0;right:0;top:474px;height:146px;background:repeating-linear-gradient(to bottom,#d9572b 0 44px,#fff 44px 47px);border-top:4px solid #fff;overflow:hidden}
+.s4 .track::after{content:"";position:absolute;inset:0;background:repeating-linear-gradient(90deg,transparent 0 220px,rgba(255,255,255,.5) 220px 232px);animation:trackScroll .5s linear infinite}
+@keyframes trackScroll{from{background-position:0 0}to{background-position:-232px 0}}
+.s4 .notice{left:60px;top:146px;width:640px}
+.s4 .notice-body{min-height:100px}
+.notice.green .avatar{font-size:13px}
+.s4 .clock-block{left:780px;top:110px}
+.s4 .runner{position:absolute}
+.s4 .r1{left:220px;top:400px;width:88px}
+.s4 .r2{left:470px;top:390px;width:70px}
+.s4 .r2 .kid{animation-delay:-.1s}
+.s4 .run-bubble{left:100px;top:346px;color:#15803d}
+
+/* ---------- scene 5 ---------- */
+.s5 .bg{background:linear-gradient(135deg,#4f46e5 0%,#7c3aed 50%,#db2777 100%)}
+.s5 .ring{position:absolute;left:50%;top:190px;width:220px;height:220px;margin:-110px 0 0 -110px;border:4px solid rgba(255,255,255,.45);border-radius:50%;animation:ringOut 3s ease-out infinite}
+.s5 .ring:nth-of-type(2){animation-delay:1s}.s5 .ring:nth-of-type(3){animation-delay:2s}
+@keyframes ringOut{from{transform:scale(.4);opacity:.9}to{transform:scale(4.2);opacity:0}}
+.s5 .title{position:absolute;top:96px;left:0;right:0;text-align:center;color:#fff}
+.s5 .title .big{display:inline-block;font-size:96px;font-weight:900;letter-spacing:6px;text-shadow:0 8px 0 rgba(0,0,0,.18)}
+.s5 .title p{font-size:40px;font-weight:700;margin-top:6px;opacity:.95}
+.s5 .badges{position:absolute;top:322px;left:0;right:0;display:flex;justify-content:center;gap:30px}
+.big-badge{display:inline-flex;align-items:center;gap:12px;font-size:42px;font-weight:900;background:#fff;color:#4f46e5;padding:10px 30px;border-radius:999px;box-shadow:0 10px 0 rgba(0,0,0,.15)}
+.big-badge.alt{color:#db2777}
+.big-badge svg{width:42px;height:42px}
+.s5 .ground{position:absolute;left:0;right:0;top:560px;bottom:0;background:rgba(255,255,255,.18)}
+.s5 .row{position:absolute;left:40px;right:40px;top:424px;display:flex;justify-content:space-between;align-items:flex-end}
+.s5 .mini{width:150px;text-align:center}
+.s5 .mini svg{display:block;width:150px}
+.s5 .mini span{display:inline-block;margin-bottom:6px;font-size:18px;font-weight:800;color:#fff;background:#f97316;padding:3px 12px;border-radius:8px}
+.s5 .mini.b span{background:#06b6d4}
+
+/* ---------- scene 6 ---------- */
+.s6 .night{position:absolute;inset:0;background:linear-gradient(#0f1d3d,#2b3f78)}
+.s6 .morning{position:absolute;inset:0;background:linear-gradient(#ffd7a0 0%,#ffeccc 40%,#e3f3ff 100%);opacity:0}
+.s6.active .morning{animation:fadeIn 1.6s ease 2s both}
+.s6 .stars i{position:absolute;width:4px;height:4px;border-radius:50%;background:#fff;animation:blink 2s ease-in-out infinite}
+.s6.active .stars{animation:fadeOut 1s ease 2s both}
+.s6 .moon{position:absolute;left:130px;top:80px;width:100px;height:100px;border-radius:50%;box-shadow:inset -28px 10px 0 0 #fde68a}
+.s6.active .moon{animation:moonSet 1.8s ease-in 1.8s both}
+@keyframes moonSet{from{opacity:1;transform:none}to{opacity:0;transform:translateY(140px)}}
+.s6 .sun6{position:absolute;right:110px;top:56px;width:120px;height:120px;border-radius:50%;background:radial-gradient(circle,#fff6b0 0 40%,#ffd23f 42% 72%,#ffb627 74%);box-shadow:0 0 60px 20px rgba(255,210,63,.55);opacity:0}
+.s6.active .sun6{animation:sun6 2s ease-out 2.4s both}
+@keyframes sun6{from{opacity:0;transform:translateY(160px)}to{opacity:1;transform:none}}
+.s6 .bed{position:absolute;left:40px;top:300px;width:520px}
+.s6 .bed svg{display:block;width:100%}
+.s6 .blanket{transform-origin:300px 190px;animation:breathe 2.4s ease-in-out infinite}
+@keyframes breathe{0%,100%{transform:scaleY(1)}50%{transform:scaleY(1.04)}}
+.s6 .eyes-open{opacity:0}
+.s6.active .eyes-open{animation:fadeIn .3s ease 3.4s both}
+.s6.active .eyes-closed{animation:fadeOut .3s ease 3.4s both}
+.s6 .zzz{position:absolute;left:190px;top:320px;width:120px;height:140px}
+.s6.active .zzz{animation:fadeOut .5s ease 3s both}
+.s6 .zzz span{position:absolute;left:0;bottom:0;font-weight:900;color:#c7d2fe;animation:zz 2.4s ease-out infinite;opacity:0}
+.s6 .zzz span:nth-child(1){font-size:30px}
+.s6 .zzz span:nth-child(2){font-size:40px;animation-delay:.8s}
+.s6 .zzz span:nth-child(3){font-size:52px;animation-delay:1.6s}
+@keyframes zz{0%{opacity:0;transform:translate(0,0)}20%{opacity:1}100%{opacity:0;transform:translate(70px,-110px)}}
+.s6 .txt{position:absolute;left:620px;top:210px;width:600px;text-align:center}
+.s6 h2{font-size:58px;font-weight:900;line-height:1.3;color:var(--ink)}
+.s6 h2 em{font-style:normal;color:var(--red)}
+.s6 .stamp6{display:inline-block;margin-top:22px;font-size:46px;font-weight:900;color:#d62828;border:6px solid #d62828;border-radius:16px;padding:4px 24px;letter-spacing:6px;background:rgba(255,255,255,.5)}
+.s6 .txt p{margin-top:24px;font-size:24px;color:#475569;font-weight:600}
+</style>
+</head>
+<body>
+<div id="viewport">
+<div id="stage" class="intro">
+
+  <!-- Scene 1: 导语 -->
+  <section class="scene s1" id="s1">
+    <div class="bg"></div>
+    <div class="cloud c1"></div><div class="cloud c2"></div><div class="cloud c3"></div>
+    <div class="sunwrap"><div class="rays"></div><div class="sun"></div></div>
+    <svg class="hills" viewBox="0 0 1280 230" preserveAspectRatio="none" aria-hidden="true">
+      <path d="M0 120 Q200 40 420 110 T860 100 T1280 90 V230 H0Z" fill="#9fd67a"/>
+      <path d="M0 165 Q320 100 640 155 T1280 140 V230 H0Z" fill="#74c255"/>
+    </svg>
+    <div class="school-wrap fade-in" style="--d:.4s" data-school="临泉三中"></div>
+    <div class="alarm fade-in" style="--d:.2s" data-alarm></div>
+    <div class="title">
+      <div class="t-small fly-up" style="--d:.3s">近日，多所学校发布新安排</div>
+      <h1><span class="pop" style="--d:.7s">上学时间</span><span class="pop hot" style="--d:1.1s">推迟啦！</span></h1>
+      <div class="tags">
+        <span class="tag pop" style="--d:1.7s">临泉三中</span>
+        <span class="tag t2 pop" style="--d:1.9s">临泉十一中</span>
+        <span class="tag t3 pop" style="--d:2.1s">等多所学校</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Scene 2: 政策背景 -->
+  <section class="scene s2" id="s2">
+    <div class="bg"></div>
+    <div class="head fly-up" style="--d:.1s"><span class="date-pill">10月10日</span>市教育局专题会议部署</div>
+    <div class="doc pop" style="--d:.5s">
+      <svg viewBox="0 0 280 360" aria-hidden="true">
+        <rect x="8" y="12" width="268" height="344" rx="14" fill="rgba(0,0,0,.1)"/>
+        <rect x="0" y="0" width="268" height="344" rx="14" fill="#fff" stroke="#e2e8f0" stroke-width="2"/>
+        <text x="134" y="56" text-anchor="middle" font-size="32" font-weight="900" fill="#d62828" letter-spacing="4">市教育局</text>
+        <rect x="24" y="74" width="220" height="4" fill="#d62828"/>
+        <text x="134" y="114" text-anchor="middle" font-size="21" font-weight="800" fill="#1f2a44">专题会议部署</text>
+        <g fill="#e2e8f0">
+          <rect x="30" y="140" width="208" height="10" rx="5"/><rect x="30" y="162" width="190" height="10" rx="5"/>
+          <rect x="30" y="184" width="208" height="10" rx="5"/><rect x="30" y="206" width="150" height="10" rx="5"/>
+          <rect x="30" y="236" width="208" height="10" rx="5"/><rect x="30" y="258" width="120" height="10" rx="5"/>
+        </g>
+      </svg>
+      <div class="doc-stamp stamp" style="--d:4.4s">健康<br>第一</div>
+    </div>
+    <div class="cards">
+      <div class="card slide-in-r" style="--d:1.2s">
+        <div class="ico" style="background:#3b82f6"><svg viewBox="0 0 24 24"><path d="M12 2 4 5v6c0 5 3.4 9.4 8 11 4.6-1.6 8-6 8-11V5l-8-3z" fill="#fff"/><path d="M8 12l3 3 5-6" stroke="#3b82f6" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg></div>
+        <div><b>规范办学行为</b><p>进一步规范，科学安排作息</p></div>
+      </div>
+      <div class="card slide-in-r" style="--d:2.2s">
+        <div class="ico" style="background:#ef4444"><svg viewBox="0 0 24 24"><path d="M12 21s-7.5-4.6-9.6-9.2C.9 8.4 3 4.5 6.8 4.5c2.2 0 3.7 1.3 5.2 3 1.5-1.7 3-3 5.2-3 3.8 0 5.9 3.9 4.4 7.3C19.5 16.4 12 21 12 21z" fill="#fff"/></svg></div>
+        <div><b>落实“健康第一”理念</b><p>把学生健康放在第一位</p></div>
+      </div>
+      <div class="card slide-in-r" style="--d:3.2s">
+        <div class="ico" style="background:#6366f1"><svg viewBox="0 0 24 24"><path d="M20 14.5A8.5 8.5 0 0 1 9.5 4a8.5 8.5 0 1 0 10.5 10.5z" fill="#fff"/><circle cx="17" cy="5" r="1.2" fill="#fff"/><circle cx="20.5" cy="9" r=".9" fill="#fff"/></svg></div>
+        <div><b>保障充足睡眠</b><p>扎实做好中小学生睡眠管理</p></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Scene 3: 临泉三中 -->
+  <section class="scene s3" id="s3">
+    <div class="bg"></div>
+    <div class="cloud c1"></div>
+    <div class="ground"></div>
+    <div class="road"></div>
+    <div class="school-label fly-up" style="--d:.1s"><span class="num">01</span>临泉三中</div>
+    <div class="clock-block pop" id="cb3" style="--d:.3s">
+      <div class="clock-wrap" data-clock id="clock3"></div>
+      <div class="digital" id="dig3">06:30</div>
+      <div class="clock-cap">到校时间 <b>不早于 7:30</b></div>
+    </div>
+    <div class="notice slide-in-r" style="--d:.6s">
+      <div class="notice-head"><span class="avatar">三中</span><div><b>临泉三中</b><small>致各位家长</small></div></div>
+      <div class="notice-body" id="n3"></div>
+    </div>
+    <div class="gate fade-in" style="--d:.5s">
+      <svg viewBox="0 0 260 220" aria-hidden="true">
+        <rect x="22" y="40" width="34" height="176" rx="4" fill="#b45309"/>
+        <rect x="204" y="40" width="34" height="176" rx="4" fill="#b45309"/>
+        <rect x="14" y="206" width="50" height="12" rx="3" fill="#92400e"/>
+        <rect x="196" y="206" width="50" height="12" rx="3" fill="#92400e"/>
+        <rect x="6" y="12" width="248" height="52" rx="10" fill="#b91c1c"/>
+        <text x="130" y="48" text-anchor="middle" font-size="28" font-weight="900" fill="#fff" letter-spacing="4">临泉三中</text>
+      </svg>
+    </div>
+    <div class="walker"><div data-kid="walk" data-shirt="#3b82f6" data-bag="#f97316"></div></div>
+    <div class="bubble read pop" style="--d:7.1s">
+      <svg viewBox="0 0 64 48" aria-hidden="true"><path d="M32 10Q20 2 4 6V42Q20 38 32 46Z" fill="#fff" stroke="#1e88e5" stroke-width="3" stroke-linejoin="round"/><path d="M32 10Q44 2 60 6V42Q44 38 32 46Z" fill="#fff" stroke="#1e88e5" stroke-width="3" stroke-linejoin="round"/><path d="M10 16h14M10 24h14M10 32h10M40 16h14M40 24h14M40 32h10" stroke="#93c5fd" stroke-width="3" stroke-linecap="round"/></svg>
+      到校即认真早读
+    </div>
+  </section>
+
+  <!-- Scene 4: 临泉十一中 -->
+  <section class="scene s4" id="s4">
+    <div class="bg"></div>
+    <div class="cloud c1"></div>
+    <div class="grass"></div>
+    <div class="track"></div>
+    <div class="school-label fly-up" style="--d:.1s"><span class="num">02</span>临泉十一中</div>
+    <div class="notice green slide-in" style="--d:.4s">
+      <div class="notice-head"><span class="avatar">十一中</span><div><b>临泉十一中</b><small>通知</small></div></div>
+      <div class="notice-body" id="n4"></div>
+    </div>
+    <div class="clock-block pop" id="cb4" style="--d:.3s">
+      <div class="clock-wrap" data-clock id="clock4"></div>
+      <div class="digital" id="dig4">06:20</div>
+      <div class="clock-cap"><b>7:20前</b> 进班即可</div>
+    </div>
+    <div class="runner r2 fade-in" style="--d:4.2s"><div data-kid="run" data-shirt="#ec4899" data-bag="#a855f7" data-hair="#5b3a29"></div></div>
+    <div class="runner r1 fade-in" style="--d:4s"><div data-kid="run" data-shirt="#22c55e" data-bag="#f59e0b"></div></div>
+    <div class="bubble run-bubble pop" style="--d:4.8s">早点到校跑跑步，锻炼身体！</div>
+  </section>
+
+  <!-- Scene 5: 全国多地 -->
+  <section class="scene s5" id="s5">
+    <div class="bg"></div>
+    <div class="ring"></div><div class="ring"></div><div class="ring"></div>
+    <div class="title">
+      <div class="big pop" style="--d:.2s">全国多地官宣</div>
+      <p class="fly-up" style="--d:.8s">调整中小学上学时间</p>
+    </div>
+    <div class="badges">
+      <span class="big-badge pop" style="--d:1.4s"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10" fill="#4f46e5"/><path d="M12 6v6l4 2" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round"/></svg>延迟到校</span>
+      <span class="big-badge alt pop" style="--d:1.8s"><svg viewBox="0 0 24 24"><path d="M12 6Q8 3 2 4v15q6-1 10 2 4-3 10-2V4q-6-1-10 2z" fill="#db2777"/><path d="M8 9l8 8M16 9l-8 8" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/></svg>取消早读</span>
+    </div>
+    <div class="ground"></div>
+    <div class="row" id="row5"></div>
+  </section>
+
+  <!-- Scene 6: 结尾 -->
+  <section class="scene s6" id="s6">
+    <div class="night"></div>
+    <div class="stars" id="stars"></div>
+    <div class="moon"></div>
+    <div class="morning"></div>
+    <div class="sun6"></div>
+    <div class="bed">
+      <svg viewBox="0 0 520 300" aria-hidden="true">
+        <rect x="18" y="70" width="34" height="210" rx="12" fill="#8b5e3c"/>
+        <rect x="470" y="150" width="28" height="130" rx="10" fill="#8b5e3c"/>
+        <rect x="30" y="200" width="460" height="44" rx="10" fill="#a47148"/>
+        <rect x="44" y="176" width="440" height="36" rx="14" fill="#fff"/>
+        <ellipse cx="110" cy="166" rx="62" ry="26" fill="#fff" stroke="#e2e8f0" stroke-width="3"/>
+        <circle cx="122" cy="138" r="34" fill="#ffd7b5"/>
+        <path d="M88 140Q84 100 122 102Q152 104 156 126Q140 116 124 118Q106 120 100 146Z" fill="#2b2118"/>
+        <g class="eyes-closed" stroke="#2b2118" stroke-width="3" fill="none" stroke-linecap="round"><path d="M126 138Q133 144 140 138"/></g>
+        <g class="eyes-open"><circle cx="133" cy="137" r="3.6" fill="#2b2118"/><path d="M132 152Q139 157 146 150" stroke="#c0504d" stroke-width="2.6" fill="none" stroke-linecap="round"/></g>
+        <circle cx="146" cy="148" r="5" fill="#ffa8a8" opacity=".7"/>
+        <path class="blanket" d="M146 190Q150 128 236 130Q340 124 430 140Q484 148 490 192Z" fill="#60a5fa"/>
+        <g fill="#dbeafe" opacity=".9"><circle cx="230" cy="160" r="5"/><circle cx="300" cy="150" r="4"/><circle cx="370" cy="166" r="5"/><circle cx="430" cy="160" r="4"/><circle cx="270" cy="176" r="3"/></g>
+      </svg>
+    </div>
+    <div class="zzz"><span>Z</span><span>z</span><span>Z</span></div>
+    <div class="txt">
+      <h2 class="pop" style="--d:3.4s">多睡一会儿<br><em>健康成长</em>每一天</h2>
+      <div class="stamp6 stamp" style="--d:4.2s">健康第一</div>
+      <p class="fly-up" style="--d:4.8s">请家长合理调整接送时间，配合学校作息安排</p>
+    </div>
+  </section>
+
+  <div id="hud"><span class="hud-tag">教育快讯</span><span class="hud-title">临泉 · 中小学上学时间调整</span></div>
+  <div id="caption"></div>
+
+  <div id="end"><button id="replayBig" type="button"><svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg>重新播放</button></div>
+
+  <div id="intro">
+    <h1>上学时间推迟啦！</h1>
+    <p>临泉三中、十一中等多所学校发布到校时间新安排</p>
+    <div class="playbig"><svg viewBox="0 0 24 24"><path d="M6 4v16l14-8z"/></svg></div>
+    <small>点击播放（含背景音乐）· 空格键 暂停/继续 · ← → 快退/快进</small>
+  </div>
+
+  <div id="controls">
+    <button id="btnPlay" type="button" title="播放/暂停"></button>
+    <button id="btnReplay" type="button" title="重新播放"><svg viewBox="0 0 24 24"><path d="M12 5V1L7 6l5 5V7a5 5 0 1 1-5 5H5a7 7 0 1 0 7-7z"/></svg></button>
+    <div id="progress"></div>
+    <span id="time">00:00 / 00:00</span>
+    <button id="btnSound" type="button" title="声音开/关"></button>
+    <button id="btnFull" type="button" title="全屏"><svg viewBox="0 0 24 24"><path d="M4 4h6v2H6v4H4zm10 0h6v6h-2V6h-4zM4 14h2v4h4v2H4zm14 0h2v6h-6v-2h4z"/></svg></button>
+  </div>
+</div>
+</div>
+
+<script>
+(function(){
+'use strict';
+const $=s=>document.querySelector(s);
+const stage=$('#stage');
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const ease=t=>t<.5?4*t*t*t:1-Math.pow(-2*t+2,3)/2;
+
+/* ---------------- drawing generators ---------------- */
+function shade(hex,amt){
+  const n=parseInt(hex.slice(1),16);
+  const f=v=>clamp(Math.round(v*(1+amt)),0,255);
+  return '#'+((1<<24)|(f(n>>16)<<16)|(f((n>>8)&255)<<8)|f(n&255)).toString(16).slice(1);
+}
+function kidSVG(mode,o){
+  const shirt=o.shirt||'#3b82f6',pants=o.pants||'#334155',bag=o.bag||'#f97316',hair=o.hair||'#2b2118',skin='#ffd7b5';
+  const arm=(cls,c)=>`<g class="limb ${cls}"><rect x="46" y="58" width="9" height="36" rx="4.5" fill="${c}"/><circle cx="50.5" cy="96" r="5" fill="${skin}"/></g>`;
+  const leg=(cls,c)=>`<g class="limb ${cls}"><rect x="45" y="98" width="11" height="52" rx="5.5" fill="${c}"/><ellipse cx="54" cy="152" rx="10" ry="5.5" fill="#222"/></g>`;
+  return `<svg class="kid ${mode}" viewBox="0 0 100 175" aria-hidden="true">
+    <ellipse cx="50" cy="168" rx="26" ry="5" fill="rgba(0,0,0,.15)"/>
+    <g class="kid-bob">
+      ${arm('arm-b',shade(shirt,-.22))}
+      ${leg('leg-b',shade(pants,-.3))}
+      <rect x="27" y="58" width="15" height="38" rx="6" fill="${bag}"/>
+      <rect x="37" y="54" width="27" height="52" rx="11" fill="${shirt}"/>
+      <path d="M41 57L38 92" stroke="${shade(bag,-.25)}" stroke-width="3" stroke-linecap="round"/>
+      ${leg('leg-f',pants)}
+      ${arm('arm-f',shirt)}
+      <g>
+        <circle cx="52" cy="32" r="21" fill="${skin}"/>
+        <path d="M30 37Q27 10 52 10Q75 10 74 28Q64 18 50 21Q42 24 41 41Z" fill="${hair}"/>
+        <circle cx="45" cy="35" r="4" fill="${skin}" stroke="#e8b48f" stroke-width="1.5"/>
+        <circle cx="63" cy="31" r="2.6" fill="#222"/>
+        <circle cx="67" cy="38" r="3" fill="#ffa8a8" opacity=".6"/>
+        <path d="M58 42Q63 45 68 41" stroke="#c0504d" stroke-width="2.2" fill="none" stroke-linecap="round"/>
+      </g>
+    </g></svg>`;
+}
+function clockSVG(){
+  let ticks='';
+  for(let i=0;i<60;i++){
+    const m=i%5===0;
+    ticks+=`<line x1="100" y1="${m?15:17}" x2="100" y2="${m?29:23}" stroke="${m?'#1f2a44':'#94a3b8'}" stroke-width="${m?4:2}" stroke-linecap="round" transform="rotate(${i*6} 100 100)"/>`;
+  }
+  const nums=[[12,100,57],[3,153,109],[6,100,162],[9,47,109]].map(([n,x,y])=>`<text x="${x}" y="${y}" text-anchor="middle" font-size="24" font-weight="800" fill="#1f2a44">${n}</text>`).join('');
+  return `<svg class="clock" viewBox="0 0 200 200" aria-hidden="true"><circle cx="100" cy="100" r="94" fill="#fff" stroke="#1f2a44" stroke-width="7"/>${ticks}${nums}
+    <line class="hh" x1="100" y1="108" x2="100" y2="58" stroke="#1f2a44" stroke-width="9" stroke-linecap="round"/>
+    <line class="mh" x1="100" y1="112" x2="100" y2="34" stroke="#e8462f" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="100" cy="100" r="8" fill="#e8462f" stroke="#fff" stroke-width="3"/></svg>`;
+}
+function setClock(el,min){
+  el.querySelector('.hh').setAttribute('transform',`rotate(${(min/60%12)*30} 100 100)`);
+  el.querySelector('.mh').setAttribute('transform',`rotate(${(min%60)*6} 100 100)`);
+}
+const hm=min=>String(Math.floor(min/60)).padStart(2,'0')+':'+String(Math.floor(min%60)).padStart(2,'0');
+function schoolSVG(name){
+  let win='';
+  [190,240].forEach(y=>[38,78,118,196,236,276].forEach(x=>{win+=`<rect x="${x}" y="${y}" width="26" height="30" rx="3" fill="#8ecae6" stroke="#fff" stroke-width="3"/>`;}));
+  const sign=name?`<rect x="104" y="153" width="132" height="29" rx="5" fill="#fff"/><text x="170" y="174" text-anchor="middle" font-size="18" font-weight="800" fill="#d9534f">${name}</text>`:'';
+  return `<svg class="school" viewBox="0 0 340 300" aria-hidden="true">
+    <line x1="170" y1="0" x2="170" y2="44" stroke="#64748b" stroke-width="3"/>
+    <path class="flag" d="M171 3Q186 -1 200 5Q214 11 228 5V27Q214 33 200 27Q186 21 171 25Z" fill="#e63946"/>
+    <polygon points="118,74 170,40 222,74" fill="#d9534f"/>
+    <rect x="128" y="72" width="84" height="70" fill="#f6dfb3"/>
+    <circle cx="170" cy="106" r="22" fill="#fff" stroke="#8d5524" stroke-width="4"/>
+    <line x1="170" y1="106" x2="161" y2="115" stroke="#333" stroke-width="3.5" stroke-linecap="round"/>
+    <line x1="170" y1="106" x2="170" y2="123" stroke="#333" stroke-width="2.5" stroke-linecap="round"/>
+    <rect x="14" y="132" width="312" height="16" rx="4" fill="#d9534f"/>
+    <rect x="20" y="146" width="300" height="146" fill="#fbe9c8"/>
+    ${win}${sign}
+    <rect x="145" y="232" width="50" height="60" rx="4" fill="#a0522d"/>
+    <line x1="170" y1="232" x2="170" y2="292" stroke="#7a3e1d" stroke-width="2"/>
+    <rect x="0" y="290" width="340" height="10" rx="3" fill="#cbb08a"/></svg>`;
+}
+function alarmSVG(){
+  return `<svg viewBox="0 0 200 210" aria-hidden="true">
+    <path d="M30 34l-14-14M170 34l14-14M100 10V0" stroke="#8a3b12" stroke-width="5" stroke-linecap="round"/>
+    <circle cx="48" cy="44" r="24" fill="#ef4444"/><circle cx="152" cy="44" r="24" fill="#ef4444"/>
+    <path d="M60 182l-18 22M140 182l18 22" stroke="#7f1d1d" stroke-width="9" stroke-linecap="round"/>
+    <circle cx="100" cy="116" r="76" fill="#ef4444"/>
+    <circle cx="100" cy="116" r="60" fill="#fff"/>
+    <line x1="100" y1="116" x2="78" y2="138" stroke="#1f2a44" stroke-width="7" stroke-linecap="round"/>
+    <line x1="100" y1="116" x2="100" y2="166" stroke="#1f2a44" stroke-width="4" stroke-linecap="round"/>
+    <circle cx="100" cy="116" r="6" fill="#ef4444"/></svg>`;
+}
+
+document.querySelectorAll('[data-kid]').forEach(el=>{el.innerHTML=kidSVG(el.dataset.kid,{shirt:el.dataset.shirt,bag:el.dataset.bag,hair:el.dataset.hair});});
+document.querySelectorAll('[data-clock]').forEach(el=>{el.innerHTML=clockSVG();});
+document.querySelectorAll('[data-school]').forEach(el=>{el.innerHTML=schoolSVG(el.dataset.school);});
+document.querySelectorAll('[data-alarm]').forEach(el=>{el.innerHTML=alarmSVG();});
+
+// scene 5: row of schools
+(function(){
+  const row=$('#row5');let html='';
+  for(let i=0;i<7;i++){
+    const b=i%2===1;
+    html+=`<div class="mini rise ${b?'b':''}" style="--d:${(2.2+i*.28).toFixed(2)}s"><span>${b?'取消早读':'延迟到校'}</span>${schoolSVG('')}</div>`;
+  }
+  row.innerHTML=html;
+})();
+// scene 6: stars
+(function(){
+  let seed=7,html='';
+  const rnd=()=>(seed=(seed*16807)%2147483647)/2147483647;
+  for(let i=0;i<40;i++) html+=`<i style="left:${(rnd()*1280).toFixed(0)}px;top:${(rnd()*300).toFixed(0)}px;animation-delay:${(rnd()*2).toFixed(2)}s;transform:scale(${(.5+rnd()).toFixed(2)})"></i>`;
+  $('#stars').innerHTML=html;
+})();
+
+/* ---------------- typewriter ---------------- */
+function typer(el,segs){
+  const total=segs.reduce((a,s)=>a+s.t.length,0);let last=-1;
+  const fn=n=>{
+    n=clamp(Math.floor(n),0,total);
+    if(n===last) return; last=n;
+    let out='',left=n;
+    for(const s of segs){ if(left<=0) break; const part=s.t.slice(0,left); left-=part.length; out+=s.hl?`<mark>${part}</mark>`:part; }
+    el.innerHTML=out+(n<total?'<i class="caret"></i>':'');
+  };
+  fn.reset=()=>{last=-1;};
+  return fn;
+}
+const type3=typer($('#n3'),[
+  {t:'各位家长好！根据市教育局10月10日专题会议部署，为进一步规范办学行为，落实“健康第一”理念，扎实做好中小学生睡眠管理，保障学生充足休息，请家长合理调整接送时间，'},
+  {t:'学生早上到校时间不早于7:30',hl:1},{t:'，'},{t:'到校即认真早读',hl:1},{t:'。感谢家长配合！'}
+]);
+const type4=typer($('#n4'),[
+  {t:'通知：由于时间调整，'},{t:'早上7:20前进班即可',hl:1},{t:'，可以让孩子早点到校'},{t:'跑跑步，锻炼一下身体',hl:1},{t:'！望各位家长知悉！'}
+]);
+
+/* ---------------- audio ---------------- */
+let actx=null,master=null,soundOn=true,nextNote=0,step=0;
+const mtof=m=>440*Math.pow(2,(m-69)/12);
+const MELODY=[72,null,76,79,81,79,76,null,74,null,76,79,76,74,72,null,72,null,76,79,81,null,84,81,79,76,74,76,72,null,null,null];
+const BASS=[48,45,41,43];
+function tone(freq,t,dur,type,vol){
+  const o=actx.createOscillator(),g=actx.createGain();
+  o.type=type;o.frequency.value=freq;
+  g.gain.setValueAtTime(0.0001,t);
+  g.gain.linearRampToValueAtTime(vol,t+.02);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur);
+  o.connect(g);g.connect(master);o.start(t);o.stop(t+dur+.05);
+}
+function schedule(){
+  if(!actx||actx.state!=='running') return;
+  while(nextNote<actx.currentTime+.25){
+    const m=MELODY[step%MELODY.length];
+    if(m!=null) tone(mtof(m),nextNote,.32,'triangle',.45);
+    if(step%4===0) tone(mtof(BASS[Math.floor(step/8)%4]),nextNote,.45,'sine',.55);
+    if(step%2===1) tone(mtof(BASS[Math.floor(step/8)%4]+12+7),nextNote,.12,'sine',.12);
+    nextNote+=.25;step++;
+  }
+}
+function initAudio(){
+  if(actx) return;
+  const AC=window.AudioContext||window.webkitAudioContext; if(!AC) return;
+  actx=new AC();master=actx.createGain();master.gain.value=soundOn?.16:0;master.connect(actx.destination);
+  nextNote=actx.currentTime+.1;step=0;setInterval(schedule,60);
+}
+function ding(){
+  if(!actx||!soundOn||actx.state!=='running') return;
+  const t=actx.currentTime;tone(1046.5,t,.6,'sine',.7);tone(1568,t+.12,.8,'sine',.6);
+}
+function syncAudio(){
+  if(!actx) return;
+  master.gain.setTargetAtTime(soundOn?.16:0,actx.currentTime,.05);
+  if(playing&&soundOn) actx.resume().then(()=>{nextNote=Math.max(nextNote,actx.currentTime+.05);}); else actx.suspend();
+}
+
+/* ---------------- scenes & timeline ---------------- */
+const scenes=[
+  {id:'s1',name:'导语',dur:6500,caps:[[0,'近日，临泉三中、十一中等多所学校发布上学时间延迟的安排！']]},
+  {id:'s2',name:'政策背景',dur:7500,caps:[[0,'根据市教育局10月10日专题会议部署，规范办学行为，落实“健康第一”理念'],[3700,'扎实做好中小学生睡眠管理，保障学生充足休息']]},
+  {id:'s3',name:'临泉三中',dur:11000,caps:[[0,'临泉三中：请家长合理调整接送时间，学生早上到校时间不早于7:30'],[6200,'到校即认真早读。感谢家长配合！']],
+    reset(){type3.reset();this.dinged=false;},
+    tick(t){
+      const p=clamp((t-800)/3000,0,1),m=390+60*ease(p);
+      setClock($('#clock3'),m);$('#dig3').textContent=hm(m);
+      $('#cb3').classList.toggle('done',p>=1);
+      if(p>=1&&!this.dinged){this.dinged=true;if(t<4300)ding();}
+      type3((t-1300)/1000*28);
+    }},
+  {id:'s4',name:'临泉十一中',dur:10000,caps:[[0,'临泉十一中：由于时间调整，早上7:20前进班即可'],[4600,'可以让孩子早点到校跑跑步，锻炼一下身体！']],
+    reset(){type4.reset();this.dinged=false;},
+    tick(t){
+      const p=clamp((t-800)/3000,0,1),m=380+60*ease(p);
+      setClock($('#clock4'),m);$('#dig4').textContent=hm(m);
+      $('#cb4').classList.toggle('done',p>=1);
+      if(p>=1&&!this.dinged){this.dinged=true;if(t<4300)ding();}
+      type4((t-1000)/1000*24);
+    }},
+  {id:'s5',name:'全国多地',dur:7500,caps:[[0,'目前，全国已有多地官宣调整中小学上学时间'],[2400,'延迟到校、取消早读，让孩子睡得更足']]},
+  {id:'s6',name:'健康第一',dur:7500,caps:[[0,'多睡一会儿，精神饱满上学去'],[3600,'健康第一 · 请家长合理调整接送时间']]}
+];
+let acc=0;
+const prog=$('#progress');
+scenes.forEach(s=>{
+  s.node=document.getElementById(s.id);s.start=acc;acc+=s.dur;
+  const seg=document.createElement('div');seg.className='seg';seg.style.flex=String(s.dur);seg.title=s.name;
+  seg.innerHTML='<i></i>';prog.appendChild(seg);s.fill=seg.firstChild;
+});
+const TOTAL=acc;
+
+let elapsed=0,playing=false,cur=-1,lastTs=null,ended=false,capText=null;
+const capEl=$('#caption'),timeEl=$('#time');
+const fmt=ms=>{const s=Math.floor(ms/1000);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0');};
+const sceneAt=t=>{for(let i=scenes.length-1;i>=0;i--) if(t>=scenes[i].start) return i;return 0;};
+
+function activate(i,offset){
+  scenes.forEach((s,j)=>{if(j!==i) s.node.classList.remove('active');});
+  const s=scenes[i];
+  s.node.classList.remove('active');
+  if(s.reset) s.reset();
+  void s.node.offsetWidth;
+  s.node.classList.add('active');
+  if(offset>40&&s.node.getAnimations){
+    s.node.getAnimations({subtree:true}).forEach(a=>{try{a.currentTime=(a.currentTime||0)+offset;}catch(e){}});
+  }
+  cur=i;capText=null;
+}
+function render(){
+  const i=sceneAt(Math.min(elapsed,TOTAL-1));
+  if(i!==cur) activate(i,elapsed-scenes[i].start);
+  const s=scenes[i],local=elapsed-s.start;
+  if(s.tick) s.tick(local);
+  let txt='';for(const [t,c] of s.caps) if(local>=t) txt=c;
+  if(txt!==capText){capText=txt;capEl.textContent=txt;capEl.classList.remove('show');void capEl.offsetWidth;capEl.classList.add('show');}
+  scenes.forEach(sc=>{sc.fill.style.width=(clamp((elapsed-sc.start)/sc.dur,0,1)*100)+'%';});
+  timeEl.textContent=fmt(elapsed)+' / '+fmt(TOTAL);
+}
+function loop(ts){
+  if(lastTs==null) lastTs=ts;
+  const dt=Math.min(100,ts-lastTs);lastTs=ts;
+  if(playing){elapsed+=dt;if(elapsed>=TOTAL){elapsed=TOTAL;finish();}}
+  render();
+  requestAnimationFrame(loop);
+}
+
+const ICON={
+  play:'<svg viewBox="0 0 24 24"><path d="M7 4v16l13-8z"/></svg>',
+  pause:'<svg viewBox="0 0 24 24"><path d="M6 4h4v16H6zM14 4h4v16h-4z"/></svg>',
+  on:'<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3zm13.5 3A4.5 4.5 0 0 0 14 8v8a4.5 4.5 0 0 0 2.5-4zM14 3.2v2.1a7 7 0 0 1 0 13.4v2.1a9 9 0 0 0 0-17.6z"/></svg>',
+  off:'<svg viewBox="0 0 24 24"><path d="M3 9v6h4l5 5V4L7 9H3z"/><path d="M15.5 9l5 6M20.5 9l-5 6" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" fill="none"/></svg>'
+};
+function setPlaying(p){
+  if(p&&ended){restart();return;}
+  playing=p;
+  stage.classList.toggle('paused',!p);
+  $('#btnPlay').innerHTML=p?ICON.pause:ICON.play;
+  syncAudio();
+}
+function finish(){
+  playing=false;ended=true;
+  stage.classList.add('ended');
+  $('#btnPlay').innerHTML=ICON.play;
+  if(actx){master.gain.setTargetAtTime(0,actx.currentTime,.4);setTimeout(()=>{if(ended&&actx)actx.suspend();},1600);}
+}
+function seek(t){
+  elapsed=clamp(t,0,TOTAL-1);cur=-1;
+  if(ended){ended=false;stage.classList.remove('ended');}
+  render();
+}
+function restart(){
+  ended=false;stage.classList.remove('ended');
+  seek(0);setPlaying(true);
+}
+function setSound(on){
+  soundOn=on;$('#btnSound').innerHTML=on?ICON.on:ICON.off;
+  if(on&&!actx) initAudio();
+  syncAudio();
+}
+function start(){
+  stage.classList.remove('intro');$('#intro').style.display='none';
+  initAudio();seek(0);setPlaying(true);
+}
+
+$('#intro').addEventListener('click',start);
+$('#btnPlay').addEventListener('click',()=>setPlaying(!playing));
+$('#btnReplay').addEventListener('click',restart);
+$('#replayBig').addEventListener('click',restart);
+$('#btnSound').addEventListener('click',()=>setSound(!soundOn));
+$('#btnFull').addEventListener('click',()=>{
+  if(document.fullscreenElement) document.exitFullscreen();
+  else if(document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+});
+prog.addEventListener('click',e=>{
+  const r=prog.getBoundingClientRect();
+  seek((e.clientX-r.left)/r.width*TOTAL);
+});
+document.addEventListener('keydown',e=>{
+  if(stage.classList.contains('intro')){if(e.code==='Space'||e.code==='Enter'){e.preventDefault();start();}return;}
+  if(e.code==='Space'){e.preventDefault();setPlaying(!playing);}
+  else if(e.code==='ArrowRight') seek(elapsed+5000);
+  else if(e.code==='ArrowLeft') seek(elapsed-5000);
+  else if(e.key==='m'||e.key==='M') setSound(!soundOn);
+});
+document.addEventListener('visibilitychange',()=>{if(document.hidden&&playing) setPlaying(false);});
+
+function fit(){
+  const s=Math.min(innerWidth/1280,innerHeight/720);
+  stage.style.transform=`scale(${s>=1?Math.min(s,2):s*.98})`;
+}
+addEventListener('resize',fit);fit();
+
+$('#btnPlay').innerHTML=ICON.play;$('#btnSound').innerHTML=ICON.on;
+
+// URL params: ?autoplay  ?t=毫秒  ?pause  (方便预览/截图)
+const q=new URLSearchParams(location.search);
+if(q.has('autoplay')||q.has('t')){
+  stage.classList.remove('intro');$('#intro').style.display='none';
+  soundOn=false;$('#btnSound').innerHTML=ICON.off;
+  seek(+q.get('t')||0);setPlaying(!q.has('pause'));
+}else{
+  render();
+}
+requestAnimationFrame(loop);
+})();
+</script>
+</body>
+</html>
