@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>21世纪全球大地震回放 (3D地球)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0a0a0f; color: #e8e8e8; overflow: hidden; height: 100vh; }
+    #canvas-container { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
+    #ui-overlay { position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: 10; pointer-events: none; }
+    .panel { pointer-events: auto; background: rgba(10, 10, 20, 0.92); backdrop-filter: blur(12px); border: 1px solid rgba(255, 100, 100, 0.25); border-radius: 12px; padding: 16px 20px; color: #fff; font-size: 13px; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05); }
+    .header { position: absolute; top: 20px; left: 50%; transform: translateX(-50%); text-align: center; min-width: 300px; }
+    .header h1 { font-size: 18px; font-weight: 600; letter-spacing: 0.5px; background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; margin-bottom: 4px; }
+    .header .subtitle { font-size: 11px; color: #aaa; text-transform: uppercase; letter-spacing: 1.5px; }
+    .controls { position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 12px; min-width: 480px; }
+    .timeline-row { display: flex; align-items: center; gap: 16px; width: 100%; max-width: 640px; }
+    .timeline-label { font-size: 11px; color: #888; text-transform: uppercase; letter-spacing: 1px; min-width: 50px; }
+    .timeline-track { flex: 1; height: 6px; background: rgba(255, 255, 255, 0.08); border-radius: 3px; position: relative; cursor: pointer; }
+    .timeline-track:hover { background: rgba(255, 255, 255, 0.15); }
+    .timeline-fill { height: 100%; border-radius: 3px; background: linear-gradient(90deg, #ff6b6b, #ffd93d, #6bcb77); position: relative; box-shadow: 0 0 8px rgba(255, 107, 107, 0.6); }
+    .timeline-handle { position: absolute; top: 50%; right: -8px; transform: translateY(-50%); width: 16px; height: 16px; background: #fff; border: 2px solid #ff6b6b; border-radius: 50%; box-shadow: 0 0 12px rgba(255, 107, 107, 0.8), 0 2px 6px rgba(0, 0, 0, 0.4); transition: transform 0.1s; }
+    .timeline-track:hover .timeline-handle { transform: translateY(-50%) scale(1.2); }
+    .year-display { font-variant-numeric: tabular-nums; font-size: 16px; font-weight: 600; color: #ffd93d; min-width: 50px; text-align: right; }
+    .playback-row { display: flex; align-items: center; gap: 10px; }
+    .btn { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: 12px; transition: all 0.15s; display: flex; align-items: center; gap: 6px; }
+    .btn:hover { background: rgba(255, 107, 107, 0.3); border-color: rgba(255, 107, 107, 0.5); }
+    .btn.primary { background: linear-gradient(135deg, #ff6b6b, #e85555); border-color: transparent; font-weight: 600; padding: 10px 24px; }
+    .btn.primary:hover { box-shadow: 0 4px 20px rgba(255, 107, 107, 0.4); transform: translateY(-1px); }
+    .btn:disabled { opacity: 0.4; cursor: not-allowed; }
+    .speed-select { background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.15); color: #fff; padding: 8px 12px; border-radius: 8px; font-size: 12px; cursor: pointer; appearance: none; }
+    .speed-select:focus { outline: none; border-color: #ff6b6b; }
+    .legend { position: absolute; bottom: 20px; right: 20px; display: flex; flex-direction: column; gap: 8px; min-width: 180px; }
+    .legend-item { display: flex; align-items: center; gap: 10px; font-size: 11px; }
+    .legend-color { width: 14px; height: 14px; border-radius: 50%; box-shadow: 0 0 8px currentColor; }
+    .stats { position: absolute; top: 20px; right: 20px; text-align: right; }
+    .stat-value { font-size: 28px; font-weight: 700; color: #ff6b6b; line-height: 1; }
+    .stat-label { font-size: 10px; color: #888; text-transform: uppercase; letter-spacing: 1px; margin-top: 4px; }
+    .info-tooltip { position: absolute; background: rgba(0, 0, 0, 0.95); border: 1px solid rgba(255, 107, 107, 0.4); border-radius: 8px; padding: 12px 16px; font-size: 12px; pointer-events: none; z-index: 100; transform: translate(-50%, -120%); opacity: 0; transition: opacity 0.15s; white-space: nowrap; box-shadow: 0 8px 32px rgba(0, 0, 0, 0.6); }
+    .info-tooltip.visible { opacity: 1; }
+    .info-tooltip::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: rgba(255, 107, 107, 0.4); }
+    .info-tooltip .eq-mag { color: #ff6b6b; font-weight: 700; font-size: 14px; }
+    .info-tooltip .eq-place { color: #fff; margin: 4px 0; }
+    .info-tooltip .eq-meta { color: #aaa; font-size: 11px; display: flex; gap: 16px; }
+    .loading { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; z-index: 20; }
+    .loading .spinner { width: 48px; height: 48px; border: 3px solid rgba(255, 107, 107, 0.2); border-top-color: #ff6b6b; border-radius: 50%; animation: spin 1s linear infinite; margin: 0 auto 16px; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading-text { color: #aaa; font-size: 13px; }
+    @media (max-width: 768px) {
+      .controls { min-width: calc(100% - 40px); bottom: 12px; }
+      .legend { right: 12px; bottom: 12px; }
+      .stats { right: 12px; top: 12px; }
+      .header { top: 12px; min-width: auto; }
+      .header h1 { font-size: 16px; }
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container"></div>
+  <div id="ui-overlay">
+    <div class="loading" id="loading">
+      <div class="spinner"></div>
+      <div class="loading-text">正在加载地震数据...</div>
+    </div>
+
+    <div class="panel header" id="header">
+      <h1>21世纪全球大地震回放</h1>
+      <div class="subtitle">M ≥ 6.0 地震事件 · 2001–2024</div>
+    </div>
+
+    <div class="panel stats" id="stats">
+      <div class="stat-value" id="total-count">—</div>
+      <div class="stat-label">总事件数</div>
+    </div>
+
+    <div class="panel controls">
+      <div class="timeline-row">
+        <span class="timeline-label">年份</span>
+        <div class="timeline-track" id="timeline-track" role="slider" aria-label="年份进度" tabindex="0">
+          <div class="timeline-fill" id="timeline-fill"></div>
+          <div class="timeline-handle" id="timeline-handle"></div>
+        </div>
+        <span class="year-display" id="year-display">2001</span>
+      </div>
+      <div class="playback-row">
+        <button class="btn" id="btn-rewind" aria-label="快退" title="快退 (←)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 19 2 12 11 5 11 5"></polygon><polygon points="22 19 13 12 22 5 22 5"></polygon></svg></button>
+        <button class="btn primary" id="btn-play" aria-label="播放" title="播放/暂停 (空格)"><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" id="play-icon"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" id="pause-icon" style="display:none"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg></button>
+        <button class="btn" id="btn-forward" aria-label="快进" title="快进 (→)"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="13 19 22 12 13 5 13 5"></polygon><polygon points="2 19 11 12 2 5 2 5"></polygon></svg></button>
+        <select class="speed-select" id="speed-select" aria-label="播放速度">
+          <option value="0.5">0.5×</option>
+          <option value="1" selected>1×</option>
+          <option value="2">2×</option>
+          <option value="4">4×</option>
+          <option value="8">8×</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="panel legend" id="legend">
+      <div class="legend-item"><span class="legend-color" style="color:#6bcb77"></span> M 6.0 – 6.9</div>
+      <div class="legend-item"><span class="legend-color" style="color:#ffd93d"></span> M 7.0 – 7.9</div>
+      <div class="legend-item"><span class="legend-color" style="color:#ff9f43"></span> M 8.0 – 8.9</div>
+      <div class="legend-item"><span class="legend-color" style="color:#ff6b6b"></span> M ≥ 9.0</div>
+    </div>
+
+    <div class="info-tooltip" id="tooltip" role="tooltip" aria-hidden="true"></div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+    // ===== CONFIG =====
+    const CONFIG = {
+      minMagnitude: 6.0,
+      startYear: 2001,
+      endYear: 2024,
+      earthRadius: 100,
+      markerBaseSize: 1.8,
+      pulseDuration: 2.5,
+      apiUrl: 'https://earthquake.usgs.gov/fdsnws/event/1/query',
+      cacheKey: 'earthquake-data-v3',
+      cacheExpiry: 7 * 24 * 60 * 60 * 1000,
+    };
+
+    // ===== STATE =====
+    let earthquakes = [];
+    let currentYear = CONFIG.startYear;
+    let isPlaying = false;
+    let playbackSpeed = 1;
+    let lastFrameTime = 0;
+    let animationId = null;
+    let activePulses = [];
+    let hoveredQuake = null;
+
+    // ===== THREE SETUP =====
+    const container = document.getElementById('canvas-container');
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, powerPreference: 'high-performance' });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.1;
+    container.appendChild(renderer.domElement);
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(45, window.innerWidth / window.innerHeight, 1, 5000);
+    camera.position.set(0, 0, 320);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.05;
+    controls.minDistance = 140;
+    controls.maxDistance = 600;
+    controls.autoRotate = true;
+    controls.autoRotateSpeed = 0.3;
+
+    // ===== POST PROCESSING (BLOOM) =====
+    const composer = new EffectComposer(renderer);
+    composer.addPass(new RenderPass(scene, camera));
+    const bloomPass = new UnrealBloomPass(
+      new THREE.Vector2(window.innerWidth, window.innerHeight),
+      1.2, 0.4, 0.85
+    );
+    composer.addPass(bloomPass);
+
+    // ===== EARTH =====
+    function createEarth() {
+      const group = new THREE.Group();
+
+      // Earth sphere with procedural shader
+      const geometry = new THREE.SphereGeometry(CONFIG.earthRadius, 128, 128);
+      const uniforms = {
+        uTime: { value: 0 },
+        uRadius: { value: CONFIG.earthRadius },
+      };
+      const material = new THREE.ShaderMaterial({
+        uniforms,
+        vertexShader: `
+          varying vec3 vNormal; varying vec2 vUv; varying vec3 vWorldPos;
+          void main() {
+            vNormal = normalize(normalMatrix * normal);
+            vUv = uv;
+            vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform float uTime; uniform float uRadius;
+          varying vec3 vNormal; varying vec2 vUv; varying vec3 vWorldPos;
+          // Simple 3D noise
+          float hash(vec3 p) { return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453); }
+          float noise(vec3 p) {
+            vec3 i = floor(p); vec3 f = fract(p); f = f * f * (3.0 - 2.0 * f);
+            return mix(mix(mix(hash(i + vec3(0,0,0)), hash(i + vec3(1,0,0)), f.x),
+                           mix(hash(i + vec3(0,1,0)), hash(i + vec3(1,1,0)), f.x), f.y),
+                       mix(mix(hash(i + vec3(0,0,1)), hash(i + vec3(1,0,1)), f.x),
+                           mix(hash(i + vec3(0,1,1)), hash(i + vec3(1,1,1)), f.x), f.y), f.z);
+          }
+          float fbm(vec3 p) {
+            float v = 0.0, a = 0.5; mat3 m = mat3(1.6, 1.2, -1.2, -1.2, 1.6, 1.2, 1.2, -1.2, 1.6);
+            for (int i = 0; i < 5; i++) { v += a * noise(p); p = m * p * 2.0; a *= 0.5; }
+            return v;
+          }
+          vec3 latLonToXYZ(float lat, float lon) {
+            float phi = (90.0 - lat) * 3.14159 / 180.0;
+            float theta = (180.0 - lon) * 3.14159 / 180.0;
+            return vec3(sin(phi) * cos(theta), cos(phi), sin(phi) * sin(theta));
+          }
+          void main() {
+            vec3 n = normalize(vNormal);
+            // Lat/lon from normal
+            float lat = asin(n.y) * 180.0 / 3.14159;
+            float lon = atan(n.z, n.x) * 180.0 / 3.14159;
+
+            // Continents mask (procedural)
+            float land = fbm(n * 2.5 + vec3(100.0));
+            land += 0.5 * fbm(n * 5.0 + vec3(200.0));
+            land = smoothstep(0.35, 0.55, land);
+
+            // Ocean depth variation
+            float ocean = fbm(n * 1.5 + vec3(300.0)) * 0.3;
+
+            // Base colors
+            vec3 deepOcean = vec3(0.02, 0.05, 0.12);
+            vec3 shallowOcean = vec3(0.05, 0.12, 0.25);
+            vec3 landLow = vec3(0.12, 0.18, 0.08);
+            vec3 landHigh = vec3(0.25, 0.22, 0.15);
+            vec3 snow = vec3(0.7, 0.75, 0.8);
+
+            vec3 color = mix(deepOcean, shallowOcean, ocean);
+            color = mix(color, landLow, land);
+            color = mix(color, landHigh, smoothstep(0.55, 0.75, land));
+            color = mix(color, snow, smoothstep(0.8, 0.95, land + fbm(n * 8.0) * 0.1));
+
+            // Night side
+            vec3 sunDir = normalize(vec3(0.3, 0.4, 0.5));
+            float dayFactor = max(0.0, dot(n, sunDir));
+            vec3 nightColor = vec3(0.02, 0.02, 0.05);
+            vec3 cityLights = vec3(1.0, 0.85, 0.6) * smoothstep(0.6, 0.9, land) * (1.0 - dayFactor) * 0.3;
+            color = mix(nightColor + cityLights, color, smoothstep(-0.15, 0.15, dayFactor));
+
+            // Atmosphere rim
+            float fresnel = pow(1.0 - max(0.0, dot(n, normalize(cameraPosition - vWorldPos))), 3.0);
+            color += vec3(0.15, 0.25, 0.45) * fresnel * 0.6 * dayFactor;
+
+            gl_FragColor = vec4(color, 1.0);
+          }
+        `,
+      });
+      const earthMesh = new THREE.Mesh(geometry, material);
+      group.add(earthMesh);
+
+      // Atmosphere glow
+      const atmosGeo = new THREE.SphereGeometry(CONFIG.earthRadius * 1.08, 64, 64);
+      const atmosMat = new THREE.ShaderMaterial({
+        transparent: true,
+        side: THREE.BackSide,
+        depthWrite: false,
+        blending: THREE.AdditiveBlending,
+        uniforms: { uTime: { value: 0 }, uCameraPos: { value: new THREE.Vector3() } },
+        vertexShader: `
+          varying vec3 vNormal; varying vec3 vWorldPos;
+          void main() {
+            vNormal = normalize(normalMatrix * normal);
+            vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+            gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+          }
+        `,
+        fragmentShader: `
+          uniform vec3 uCameraPos; varying vec3 vNormal; varying vec3 vWorldPos;
+          void main() {
+            vec3 viewDir = normalize(uCameraPos - vWorldPos);
+            float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.5);
+            gl_FragColor = vec4(0.2, 0.4, 0.8, 1.0) * fresnel * 0.35;
+          }
+        `,
+      });
+      const atmosphere = new THREE.Mesh(atmosGeo, atmosMat);
+      group.add(atmosphere);
+
+      // Stars background
+      const starsGeo = new THREE.BufferGeometry();
+      const starCount = 3000;
+      const positions = new Float32Array(starCount * 3);
+      const sizes = new Float32Array(starCount);
+      const colors = new Float32Array(starCount * 3);
+      for (let i = 0; i < starCount; i++) {
+        const r = 800 + Math.random() * 400;
+        const theta = Math.random() * Math.PI * 2;
+        const phi = Math.acos(2 * Math.random() - 1);
+        positions[i * 3] = r * Math.sin(phi) * Math.cos(theta);
+        positions[i * 3 + 1] = r * Math.sin(phi) * Math.sin(theta);
+        positions[i * 3 + 2] = r * Math.cos(phi);
+        sizes[i] = Math.random() * 1.5 + 0.5;
+        const c = Math.random();
+        colors[i * 3] = c > 0.6 ? 1.0 : (c > 0.3 ? 1.0 : 0.6);
+        colors[i * 3 + 1] = c > 0.6 ? 0.9 : (c > 0.3 ? 1.0 : 0.7);
+        colors[i * 3 + 2] = c > 0.6 ? 0.7 : (c > 0.3 ? 0.8 : 1.0);
+      }
+      starsGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+      starsGeo.setAttribute('size', new THREE.BufferAttribute(sizes, 1));
+      starsGeo.setAttribute('color', new THREE.BufferAttribute(colors, 3));
+      const starsMat = new THREE.PointsMaterial({
+        size: 1, vertexColors: true, transparent: true, opacity: 0.7,
+        sizeAttenuation: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+      const stars = new THREE.Points(starsGeo, starsMat);
+      group.add(stars);
+
+      return { group, earthMesh, atmosphere, stars, uniforms: { earth: material.uniforms, atmos: atmosMat.uniforms } };
+    }
+
+    const { group: earthGroup, earthMesh, atmosphere, stars, uniforms } = createEarth();
+    scene.add(earthGroup);
+
+    // ===== EARTHQUAKE MARKERS =====
+    const markerGroup = new THREE.Group();
+    scene.add(markerGroup);
+
+    function latLonToVector3(lat, lon, radius) {
+      const phi = (90 - lat) * THREE.MathUtils.DEG2RAD;
+      const theta = (180 - lon) * THREE.MathUtils.DEG2RAD;
+      return new THREE.Vector3(
+        radius * Math.sin(phi) * Math.cos(theta),
+        radius * Math.cos(phi),
+        radius * Math.sin(phi) * Math.sin(theta)
+      );
+    }
+
+    function getMagnitudeColor(mag) {
+      if (mag >= 9) return new THREE.Color(0xff6b6b);
+      if (mag >= 8) return new THREE.Color(0xff9f43);
+      if (mag >= 7) return new THREE.Color(0xffd93d);
+      return new THREE.Color(0x6bcb77);
+    }
+
+    function createMarker(quake) {
+      const pos = latLonToVector3(quake.lat, quake.lon, CONFIG.earthRadius + 0.5);
+      const color = getMagnitudeColor(quake.mag);
+      const size = CONFIG.markerBaseSize * Math.pow(1.4, quake.mag - 6);
+
+      // Glowing ring (pulse target)
+      const ringGeo = new THREE.RingGeometry(size * 0.6, size, 32);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: color, side: THREE.DoubleSide, transparent: true,
+        opacity: 0.6, depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.position.copy(pos);
+      ring.lookAt(new THREE.Vector3(0, 0, 0));
+      ring.userData = { quake, baseSize: size, color, startTime: 0, active: false };
+      markerGroup.add(ring);
+
+      // Core dot
+      const coreGeo = new THREE.SphereGeometry(size * 0.35, 16, 16);
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: color, transparent: true, opacity: 1,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+      const core = new THREE.Mesh(coreGeo, coreMat);
+      core.position.copy(pos);
+      core.userData = { quake, ring };
+      markerGroup.add(core);
+
+      return { ring, core, quake };
+    }
+
+    // ===== PULSE ANIMATION =====
+    function triggerPulse(marker) {
+      const { ring, quake } = marker;
+      const now = performance.now() / 1000;
+      ring.userData.startTime = now;
+      ring.userData.active = true;
+      ring.material.color.copy(ring.userData.color);
+      ring.scale.setScalar(0.01);
+      ring.material.opacity = 0.8;
+      activePulses.push(marker);
+    }
+
+    function updatePulses(time) {
+      for (let i = activePulses.length - 1; i >= 0; i--) {
+        const marker = activePulses[i];
+        const { ring } = marker;
+        const elapsed = time - ring.userData.startTime;
+        if (elapsed > CONFIG.pulseDuration) {
+          ring.userData.active = false;
+          ring.scale.setScalar(0.01);
+          ring.material.opacity = 0;
+          activePulses.splice(i, 1);
+          continue;
+        }
+        const progress = elapsed / CONFIG.pulseDuration;
+        const eased = 1 - Math.pow(1 - progress, 3);
+        ring.scale.setScalar(eased * 1.5);
+        ring.material.opacity = 0.8 * (1 - eased);
+      }
+    }
+
+    // ===== DATA FETCHING =====
+    async function fetchEarthquakes() {
+      // Try cache first
+      try {
+        const cached = localStorage.getItem(CONFIG.cacheKey);
+        if (cached) {
+          const { data, timestamp } = JSON.parse(cached);
+          if (Date.now() - timestamp < CONFIG.cacheExpiry) {
+            console.log('Loaded from cache:', data.length, 'events');
+            return data;
+          }
+        }
+      } catch (e) { console.warn('Cache read failed:', e); }
+
+      // Fetch from USGS
+      const params = new URLSearchParams({
+        format: 'geojson',
+        starttime: `${CONFIG.startYear}-01-01`,
+        endtime: `${CONFIG.endYear}-12-31`,
+        minmagnitude: CONFIG.minMagnitude,
+        orderby: 'time',
+        limit: '20000',
+      });
+      const url = `${CONFIG.apiUrl}?${params}`;
+
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`USGS API error: ${response.status}`);
+      const geojson = await response.json();
+
+      const events = geojson.features
+        .filter(f => f.geometry && f.geometry.coordinates.length >= 2)
+        .map(f => {
+          const [lon, lat, depth] = f.geometry.coordinates;
+          const props = f.properties;
+          return {
+            id: f.id,
+            lat, lon, depth: depth || 0,
+            mag: props.mag,
+            time: props.time,
+            place: props.place || 'Unknown location',
+            year: new Date(props.time).getFullYear(),
+          };
+        })
+        .sort((a, b) => a.time - b.time);
+
+      // Cache
+      try {
+        localStorage.setItem(CONFIG.cacheKey, JSON.stringify({ data: events, timestamp: Date.now() }));
+      } catch (e) { console.warn('Cache write failed:', e); }
+
+      console.log('Fetched from USGS:', events.length, 'events');
+      return events;
+    }
+
+    // ===== INIT MARKERS =====
+    const markers = [];
+    function initMarkers() {
+      earthquakes.forEach(q => {
+        const marker = createMarker(q);
+        markers.push(marker);
+      });
+      console.log('Created markers:', markers.length);
+    }
+
+    // ===== YEAR FILTER =====
+    function setYear(year) {
+      currentYear = Math.max(CONFIG.startYear, Math.min(CONFIG.endYear, year));
+      const progress = (currentYear - CONFIG.startYear) / (CONFIG.endYear - CONFIG.startYear);
+      document.getElementById('timeline-fill').style.width = `${progress * 100}%`;
+      document.getElementById('timeline-handle').style.right = `${-8 + progress * (document.getElementById('timeline-track').offsetWidth - 16)}px`;
+      document.getElementById('year-display').textContent = currentYear;
+
+      // Activate pulses for this year
+      const yearQuakes = earthquakes.filter(q => q.year === currentYear);
+      yearQuakes.forEach(q => {
+        const marker = markers.find(m => m.quake.id === q.id);
+        if (marker) triggerPulse(marker);
+      });
+    }
+
+    // ===== TOOLTIP =====
+    const tooltip = document.getElementById('tooltip');
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+
+    function onPointerMove(event) {
+      const rect = renderer.domElement.getBoundingClientRect();
+      mouse.x = ((event.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((event.clientY - rect.top) / rect.height) * 2 + 1;
+
+      raycaster.setFromCamera(mouse, camera);
+      const cores = markers.map(m => m.core);
+      const intersects = raycaster.intersectObjects(cores, false);
+
+      if (intersects.length > 0) {
+        const q = intersects[0].object.userData.quake;
+        if (hoveredQuake !== q) {
+          hoveredQuake = q;
+          showTooltip(q, event.clientX, event.clientY);
+        }
+      } else if (hoveredQuake) {
+        hoveredQuake = null;
+        tooltip.classList.remove('visible');
+        tooltip.setAttribute('aria-hidden', 'true');
+      }
+    }
+
+    function showTooltip(q, x, y) {
+      const date = new Date(q.time).toLocaleString('zh-CN', { timeZone: 'UTC' });
+      tooltip.innerHTML = `
+        <div class="eq-mag">M${q.mag.toFixed(1)}</div>
+        <div class="eq-place">${q.place}</div>
+        <div class="eq-meta">
+          <span>${date} UTC</span>
+          <span>深度 ${q.depth.toFixed(0)} km</span>
+        </div>
+      `;
+      tooltip.style.left = `${x}px`;
+      tooltip.style.top = `${y}px`;
+      tooltip.classList.add('visible');
+      tooltip.setAttribute('aria-hidden', 'false');
+    }
+
+    renderer.domElement.addEventListener('pointermove', onPointerMove);
+    renderer.domElement.addEventListener('pointerleave', () => {
+      hoveredQuake = null;
+      tooltip.classList.remove('visible');
+      tooltip.setAttribute('aria-hidden', 'true');
+    });
+
+    // ===== TIMELINE INTERACTION =====
+    const timelineTrack = document.getElementById('timeline-track');
+    function onTimelineClick(event) {
+      const rect = timelineTrack.getBoundingClientRect();
+      const progress = Math.max(0, Math.min(1, (event.clientX - rect.left) / rect.width));
+      const year = Math.round(CONFIG.startYear + progress * (CONFIG.endYear - CONFIG.startYear));
+      if (!isPlaying) setYear(year);
+    }
+    timelineTrack.addEventListener('click', onTimelineClick);
+    timelineTrack.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowLeft') setYear(currentYear - 1);
+      else if (e.key === 'ArrowRight') setYear(currentYear + 1);
+      else if (e.key === 'Home') setYear(CONFIG.startYear);
+      else if (e.key === 'End') setYear(CONFIG.endYear);
+    });
+
+    // ===== PLAYBACK CONTROLS =====
+    const btnPlay = document.getElementById('btn-play');
+    const playIcon = document.getElementById('play-icon');
+    const pauseIcon = document.getElementById('pause-icon');
+    const speedSelect = document.getElementById('speed-select');
+
+    function togglePlay() {
+      isPlaying = !isPlaying;
+      playIcon.style.display = isPlaying ? 'none' : 'block';
+      pauseIcon.style.display = isPlaying ? 'block' : 'none';
+      btnPlay.setAttribute('aria-label', isPlaying ? '暂停' : '播放');
+      if (isPlaying) lastFrameTime = performance.now();
+    }
+
+    function stepForward() {
+      if (currentYear < CONFIG.endYear) setYear(currentYear + 1);
+      else { setYear(CONFIG.startYear); if (isPlaying) togglePlay(); }
+    }
+
+    function stepBackward() {
+      if (currentYear > CONFIG.startYear) setYear(currentYear - 1);
+      else setYear(CONFIG.endYear);
+    }
+
+    btnPlay.addEventListener('click', togglePlay);
+    document.getElementById('btn-forward').addEventListener('click', stepForward);
+    document.getElementById('btn-rewind').addEventListener('click', stepBackward);
+    speedSelect.addEventListener('change', () => { playbackSpeed = parseFloat(speedSelect.value); });
+
+    // Keyboard shortcuts
+    window.addEventListener('keydown', (e) => {
+      if (e.target.tagName === 'SELECT') return;
+      if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+      else if (e.code === 'ArrowRight') stepForward();
+      else if (e.code === 'ArrowLeft') stepBackward();
+      else if (e.code === 'KeyR') { setYear(CONFIG.startYear); if (isPlaying) togglePlay(); }
+    });
+
+    // ===== ANIMATION LOOP =====
+    let yearAccumulator = 0;
+    function animate(timestamp) {
+      animationId = requestAnimationFrame(animate);
+      const delta = (timestamp - lastFrameTime) / 1000;
+      lastFrameTime = timestamp;
+
+      // Update uniforms
+      const time = timestamp / 1000;
+      uniforms.earth.uTime.value = time;
+      uniforms.atmos.uTime.value = time;
+      uniforms.atmos.uCameraPos.value.copy(camera.position);
+
+      // Auto-rotate
+      controls.update();
+
+      // Playback
+      if (isPlaying) {
+        yearAccumulator += delta * playbackSpeed;
+        const yearsPerSecond = 1; // 1 year per second at 1x
+        if (yearAccumulator >= 1 / yearsPerSecond) {
+          yearAccumulator = 0;
+          stepForward();
+        }
+      }
+
+      // Pulse animations
+      updatePulses(time);
+
+      // Stars slow rotation
+      stars.rotation.y += 0.00002;
+
+      composer.render(delta);
+    }
+
+    // ===== RESIZE =====
+    function onResize() {
+      const w = window.innerWidth, h = window.innerHeight;
+      camera.aspect = w / h;
+      camera.updateProjectionMatrix();
+      renderer.setSize(w, h);
+      composer.setSize(w, h);
+      bloomPass.setSize(w, h);
+    }
+    window.addEventListener('resize', onResize);
+
+    // ===== INIT =====
+    async function init() {
+      try {
+        earthquakes = await fetchEarthquakes();
+        document.getElementById('total-count').textContent = earthquakes.length.toLocaleString();
+        initMarkers();
+        setYear(CONFIG.startYear);
+        document.getElementById('loading').style.display = 'none';
+        animate(performance.now());
+      } catch (err) {
+        console.error('Init failed:', err);
+        document.getElementById('loading').innerHTML = `
+          <div style="color:#ff6b6b">加载失败: ${err.message}</div>
+          <button class="btn primary" style="margin-top:12px" onclick="location.reload()">重试</button>
+        `;
+      }
+    }
+
+    init();
+  </script>
+</body>
+</html>
