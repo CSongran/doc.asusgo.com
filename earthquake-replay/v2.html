@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>21世纪全球大地震回放 · 3D地球</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    :root {
+      --bg: #03050a; --fg: #f0f0f5; --muted: #7a7a8a; --accent: #ff6b6b;
+      --accent2: #ffd93d; --accent3: #6bcb77; --card: rgba(12, 14, 22, 0.92);
+      --border: rgba(255, 107, 107, 0.2); --glow: rgba(255, 107, 107, 0.5);
+    }
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #f5f5f8; --fg: #1a1a2e; --muted: #666; --card: rgba(255,255,255,0.95); --border: rgba(255,107,107,0.3); }
+    }
+    html, body { height: 100%; overflow: hidden; background: var(--bg); color: var(--fg); font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif; }
+    #canvas { position: fixed; top: 0; left: 0; width: 100%; height: 100%; display: block; z-index: 1; }
+    #ui { position: fixed; inset: 0; pointer-events: none; z-index: 10; }
+    .panel { pointer-events: auto; background: var(--card); backdrop-filter: blur(16px); border: 1px solid var(--border); border-radius: 14px; box-shadow: 0 12px 40px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05); }
+    /* Header */
+    .header { position: absolute; top: 16px; left: 50%; transform: translateX(-50%); text-align: center; }
+    .header h1 { font-size: clamp(16px, 2.5vw, 22px); font-weight: 700; letter-spacing: 0.3px; background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent3)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text; }
+    .header .badge { display: inline-flex; gap: 6px; align-items: center; margin-top: 6px; padding: 4px 10px; background: rgba(255,107,107,0.15); border: 1px solid var(--border); border-radius: 100px; font-size: 11px; color: var(--muted); }
+    .badge .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); animation: pulse 1.5s ease-in-out infinite; }
+    @keyframes pulse { 0%,100% { opacity: 0.5; transform: scale(1); } 50% { opacity: 1; transform: scale(1.2); } }
+    /* Stats */
+    .stats { position: absolute; top: 16px; right: 16px; display: flex; gap: 20px; }
+    .stat { text-align: right; }
+    .stat .val { font-size: clamp(18px, 2.5vw, 26px); font-weight: 800; font-variant-numeric: tabular-nums; color: var(--accent); line-height: 1; }
+    .stat .lbl { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 2px; }
+    /* Controls */
+    .controls { position: absolute; bottom: 16px; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 14px; min-width: clamp(320px, 90vw, 720px); }
+    .timeline-wrap { display: flex; align-items: center; gap: 14px; width: 100%; max-width: 680px; }
+    .timeline-label { font-size: 10px; color: var(--muted); text-transform: uppercase; letter-spacing: 1px; min-width: 44px; }
+    .timeline { flex: 1; position: relative; height: 56px; }
+    .timeline-track { position: absolute; top: 50%; left: 0; right: 0; height: 6px; transform: translateY(-50%); background: rgba(255,255,255,0.06); border-radius: 3px; overflow: hidden; }
+    .timeline-track::before { content: ''; position: absolute; top: 0; bottom: 0; left: 0; right: 0; background: repeating-linear-gradient(90deg, transparent, transparent 20px, rgba(255,255,255,0.03) 20px, rgba(255,255,255,0.03) 40px); pointer-events: none; }
+    .timeline-fill { position: absolute; top: 0; bottom: 0; left: 0; height: 100%; border-radius: 3px; background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent3)); box-shadow: 0 0 16px var(--glow), inset 0 -1px 0 rgba(0,0,0,0.2); transition: width 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94); }
+    .timeline-marks { position: absolute; top: 0; left: 0; right: 0; bottom: 0; pointer-events: none; }
+    .timeline-mark { position: absolute; top: 50%; transform: translateX(-50%) translateY(-50%); width: 2px; height: 18px; background: rgba(255,255,255,0.15); }
+    .timeline-mark.major { height: 28px; background: rgba(255,255,255,0.3); }
+    .timeline-mark-label { position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 6px; font-size: 9px; color: var(--muted); white-space: nowrap; }
+    .timeline-handle { position: absolute; top: 50%; transform: translate(-50%, -50%); width: 22px; height: 22px; border-radius: 50%; background: #fff; border: 3px solid var(--accent); box-shadow: 0 0 20px var(--glow), 0 4px 12px rgba(0,0,0,0.4); cursor: grab; transition: box-shadow 0.15s, transform 0.1s; z-index: 2; }
+    .timeline-handle:hover, .timeline-handle:active { transform: translate(-50%, -50%) scale(1.25); box-shadow: 0 0 28px var(--glow), 0 6px 16px rgba(0,0,0,0.5); cursor: grabbing; }
+    .year-display { font-variant-numeric: tabular-nums; font-size: 18px; font-weight: 700; color: var(--accent2); min-width: 56px; text-align: right; }
+    .playback { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; justify-content: center; }
+    .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 16px; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--fg); border-radius: 10px; font-size: 13px; font-weight: 500; cursor: pointer; transition: all 0.15s ease; }
+    .btn:hover { background: rgba(255,107,107,0.25); border-color: var(--border); }
+    .btn:active { transform: scale(0.96); }
+    .btn:disabled { opacity: 0.35; cursor: not-allowed; }
+    .btn.primary { background: linear-gradient(135deg, var(--accent), #e85555); border: none; padding: 12px 28px; font-weight: 600; box-shadow: 0 4px 20px var(--glow); }
+    .btn.primary:hover { box-shadow: 0 6px 28px var(--glow); transform: translateY(-1px); }
+    .btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 2; }
+    .speed-wrap { display: flex; align-items: center; gap: 8px; }
+    .speed-label { font-size: 11px; color: var(--muted); }
+    .speed-select { appearance: none; background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); color: var(--fg); padding: 8px 32px 8px 12px; border-radius: 8px; font-size: 12px; font-weight: 500; cursor: pointer; background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%23aaa' stroke-width='2'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E"); background-repeat: no-repeat; background-position: right 8px center; }
+    .speed-select:focus { outline: none; border-color: var(--accent); }
+    /* Side panels */
+    .side-panel { position: absolute; top: 100px; right: 16px; width: 280px; max-height: calc(100vh - 220px); overflow-y: auto; padding: 16px; display: flex; flex-direction: column; gap: 14px; }
+    .panel-title { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 1px; color: var(--muted); display: flex; align-items: center; gap: 8px; }
+    .panel-title::before { content: ''; width: 8px; height: 8px; border-radius: 2px; background: var(--accent); }
+    .filter-group { display: flex; flex-direction: column; gap: 10px; }
+    .filter-row { display: flex; align-items: center; gap: 10px; }
+    .filter-row label { font-size: 12px; color: var(--fg); min-width: 50px; }
+    .range-input { flex: 1; appearance: none; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; cursor: pointer; }
+    .range-input::-webkit-slider-thumb { appearance: none; width: 18px; height: 18px; border-radius: 50%; background: var(--accent); border: none; box-shadow: 0 0 8px var(--glow); cursor: pointer; transition: transform 0.1s; }
+    .range-input::-webkit-slider-thumb:hover { transform: scale(1.2); }
+    .range-value { font-size: 12px; font-variant-numeric: tabular-nums; color: var(--accent2); min-width: 40px; text-align: right; }
+    .checkbox { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 12px; }
+    .checkbox input { appearance: none; width: 16px; height: 16px; border: 1px solid rgba(255,255,255,0.2); border-radius: 4px; background: transparent; cursor: pointer; position: relative; }
+    .checkbox input:checked { background: var(--accent); border-color: var(--accent); }
+    .checkbox input:checked::after { content: ''; position: absolute; left: 5px; top: 2px; width: 5px; height: 9px; border: solid #fff; border-width: 0 2px 2px 0; transform: rotate(45deg); }
+    .quake-list { display: flex; flex-direction: column; gap: 6px; max-height: 300px; overflow-y: auto; padding-right: 4px; }
+    .quake-item { display: flex; align-items: center; gap: 10px; padding: 8px 10px; background: rgba(255,255,255,0.03); border: 1px solid transparent; border-radius: 8px; cursor: pointer; transition: all 0.15s; }
+    .quake-item:hover { background: rgba(255,107,107,0.1); border-color: var(--border); }
+    .quake-item.active { background: rgba(255,107,107,0.15); border-color: var(--border); }
+    .quake-color { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 8px currentColor; }
+    .quake-info { flex: 1; min-width: 0; }
+    .quake-mag { font-weight: 700; font-size: 13px; color: var(--fg); }
+    .quake-place { font-size: 11px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .quake-meta { font-size: 10px; color: var(--muted); text-align: right; }
+    /* Legend */
+    .legend { position: absolute; bottom: 16px; right: 16px; display: flex; flex-direction: column; gap: 8px; }
+    .legend-item { display: flex; align-items: center; gap: 10px; font-size: 11px; opacity: 0.8; transition: opacity 0.15s; }
+    .legend-item:hover { opacity: 1; }
+    .legend-color { width: 12px; height: 12px; border-radius: 50%; box-shadow: 0 0 10px currentColor; position: relative; }
+    .legend-color::after { content: ''; position: absolute; inset: -3px; border-radius: 50%; background: currentColor; opacity: 0.2; filter: blur(4px); }
+    /* Tooltip */
+    .tooltip { position: fixed; pointer-events: none; z-index: 100; background: rgba(8, 10, 16, 0.98); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; font-size: 12px; box-shadow: 0 16px 48px rgba(0,0,0,0.5); transform: translate(-50%, -100%); opacity: 0; transition: opacity 0.12s ease, transform 0.12s ease; min-width: 200px; }
+    .tooltip.visible { opacity: 1; transform: translate(-50%, calc(-100% - 8px)); }
+    .tooltip::after { content: ''; position: absolute; bottom: -6px; left: 50%; transform: translateX(-50%); border: 6px solid transparent; border-top-color: var(--border); }
+    .tooltip .row { display: flex; gap: 16px; margin-top: 8px; font-size: 11px; color: var(--muted); }
+    .tooltip .mag { font-size: 20px; font-weight: 800; color: var(--accent); line-height: 1; }
+    .tooltip .place { margin-top: 4px; color: var(--fg); font-weight: 500; }
+    /* Loading */
+    .loading { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 20px; z-index: 1000; transition: opacity 0.4s, visibility 0.4s; }
+    .loading.hidden { opacity: 0; visibility: hidden; pointer-events: none; }
+    .loading .spinner { width: 56px; height: 56px; border: 3px solid rgba(255,107,107,0.15); border-top-color: var(--accent); border-radius: 50%; animation: spin 0.9s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .loading .progress { font-size: 13px; color: var(--muted); min-height: 20px; }
+    .loading .bar { width: 240px; height: 4px; background: rgba(255,255,255,0.08); border-radius: 2px; overflow: hidden; margin-top: 8px; }
+    .loading .bar-fill { height: 100%; width: 0%; background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent3)); border-radius: 2px; transition: width 0.3s; }
+    /* Focus indicator */
+    .focus-ring { position: fixed; inset: 0; pointer-events: none; z-index: 5; opacity: 0; transition: opacity 0.3s; }
+    .focus-ring.visible { opacity: 1; }
+    /* Mobile */
+    @media (max-width: 768px) {
+      .side-panel { position: fixed; top: auto; bottom: 0; right: 0; left: 0; width: 100%; max-height: 50vh; border-radius: 16px 16px 0 0; padding: 12px 16px; transform: translateY(100%); transition: transform 0.3s cubic-bezier(0.25, 0.46, 0.45, 0.94); z-index: 20; }
+      .side-panel.open { transform: translateY(0); }
+      .panel-toggle { position: fixed; bottom: 100px; right: 16px; z-index: 15; }
+      .stats { top: 12px; right: 12px; gap: 12px; }
+      .stat .val { font-size: 16px; }
+      .header { top: 12px; }
+      .controls { bottom: 12px; min-width: calc(100% - 24px); }
+      .legend { bottom: 100px; right: 12px; }
+      .timeline { height: 48px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="loading" id="loading" role="status" aria-live="polite">
+    <div class="spinner" aria-hidden="true"></div>
+    <div class="progress" id="load-text">初始化...</div>
+    <div class="bar"><div class="bar-fill" id="load-bar"></div></div>
+  </div>
+
+  <canvas id="canvas" aria-hidden="true"></canvas>
+
+  <div class="focus-ring" id="focus-ring" aria-hidden="true"></div>
+
+  <div id="ui">
+    <div class="panel header">
+      <h1>21世纪全球大地震回放</h1>
+      <div class="badge"><span class="dot" aria-hidden="true"></span><span id="status-text">实时回放</span></div>
+    </div>
+
+    <div class="panel stats" aria-label="统计信息">
+      <div class="stat"><div class="val" id="stat-total">—</div><div class="lbl">总事件数</div></div>
+      <div class="stat"><div class="val" id="stat-year">—</div><div class="lbl">当年事件</div></div>
+      <div class="stat"><div class="val" id="stat-max">—</div><div class="lbl">最大震级</div></div>
+    </div>
+
+    <div class="panel controls" role="region" aria-label="播放控制">
+      <div class="timeline-wrap">
+        <span class="timeline-label">年份</span>
+        <div class="timeline" id="timeline" role="slider" aria-label="年份进度" tabindex="0" aria-valuemin="2001" aria-valuemax="2024" aria-valuenow="2001">
+          <div class="timeline-track"><div class="timeline-fill" id="timeline-fill" style="width: 0%"></div></div>
+          <div class="timeline-marks" id="timeline-marks"></div>
+          <div class="timeline-handle" id="timeline-handle" tabindex="-1"></div>
+        </div>
+        <span class="year-display" id="year-display">2001</span>
+      </div>
+      <div class="playback">
+        <button class="btn" id="btn-first" aria-label="跳至第一年" title="首年 (Home)"><svg viewBox="0 0 24 24"><polyline points="17 18 11 12 17 6"></polyline><line x1="6" y1="18" x2="6" y2="6"></line></svg></button>
+        <button class="btn" id="btn-rewind" aria-label="快退" title="快退 (←)"><svg viewBox="0 0 24 24"><polygon points="11 19 2 12 11 5 11 5"></polygon><polygon points="22 19 13 12 22 5 22 5"></polygon></svg></button>
+        <button class="btn primary" id="btn-play" aria-label="播放" title="播放/暂停 (空格)"><svg id="play-icon" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg><svg id="pause-icon" viewBox="0 0 24 24" fill="currentColor" style="display:none"><rect x="6" y="4" width="4" height="16"></rect><rect x="14" y="4" width="4" height="16"></rect></svg></button>
+        <button class="btn" id="btn-forward" aria-label="快进" title="快进 (→)"><svg viewBox="0 0 24 24"><polygon points="13 19 22 12 13 5 13 5"></polygon><polygon points="2 19 11 12 2 5 2 5"></polygon></svg></button>
+        <button class="btn" id="btn-last" aria-label="跳至最后一年" title="末年 (End)"><svg viewBox="0 0 24 24"><polyline points="7 18 13 12 7 6"></polyline><line x1="18" y1="18" x2="18" y2="6"></line></svg></button>
+        <div class="speed-wrap">
+          <span class="speed-label">速度</span>
+          <select class="speed-select" id="speed-select" aria-label="播放速度">
+            <option value="0.25">0.25×</option>
+            <option value="0.5">0.5×</option>
+            <option value="1" selected>1×</option>
+            <option value="2">2×</option>
+            <option value="4">4×</option>
+            <option value="8">8×</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel side-panel" id="side-panel" role="region" aria-label="筛选与列表">
+      <div class="filter-group">
+        <div class="panel-title">震级范围</div>
+        <div class="filter-row">
+          <label for="mag-min">最小</label>
+          <input type="range" class="range-input" id="mag-min" min="5" max="9" step="0.1" value="6">
+          <span class="range-value" id="mag-min-val">6.0</span>
+        </div>
+        <div class="filter-row">
+          <label for="mag-max">最大</label>
+          <input type="range" class="range-input" id="mag-max" min="5" max="9.5" step="0.1" value="9.5">
+          <span class="range-value" id="mag-max-val">9.5</span>
+        </div>
+      </div>
+      <div class="filter-group">
+        <div class="panel-title">显示选项</div>
+        <label class="checkbox"><input type="checkbox" id="show-depth" checked> 深度着色 (浅→深)</label>
+        <label class="checkbox"><input type="checkbox" id="show-plates" checked> 板块边界</label>
+        <label class="checkbox"><input type="checkbox" id="auto-rotate" checked> 空闲自动旋转</label>
+        <label class="checkbox"><input type="checkbox" id="trail-mode"> 轨迹模式</label>
+      </div>
+      <div class="filter-group">
+        <div class="panel-title">当年地震列表</div>
+        <div class="quake-list" id="quake-list" role="listbox" aria-label="当年地震"></div>
+      </div>
+    </div>
+
+    <button class="panel-toggle btn" id="panel-toggle" style="display:none" aria-label="展开筛选面板"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"></line><polyline points="12 5 19 12 12 19"></polyline></svg></button>
+
+    <div class="panel legend" aria-label="震级图例">
+      <div class="legend-item"><span class="legend-color" style="color:#6bcb77"></span> M 6.0 – 6.9</div>
+      <div class="legend-item"><span class="legend-color" style="color:#ffd93d"></span> M 7.0 – 7.9</div>
+      <div class="legend-item"><span class="legend-color" style="color:#ff9f43"></span> M 8.0 – 8.9</div>
+      <div class="legend-item"><span class="legend-color" style="color:#ff6b6b"></span> M ≥ 9.0</div>
+    </div>
+
+    <div class="tooltip" id="tooltip" role="tooltip" aria-hidden="true">
+      <div class="mag" id="tt-mag">M 0.0</div>
+      <div class="place" id="tt-place">—</div>
+      <div class="row">
+        <span id="tt-time">—</span>
+        <span id="tt-depth">—</span>
+      </div>
+    </div>
+  </div>
+
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.165.0/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.165.0/examples/jsm/"
+    }
+  }
+  </script>
+  <script type="module">
+    import * as THREE from 'three';
+    import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+    import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+    import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+    import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+    import { ShaderPass } from 'three/addons/postprocessing/ShaderPass.js';
+    import { FXAAShader } from 'three/addons/shaders/FXAAShader.js';
+
+    // ============ CONFIG ============
+    const CFG = {
+      minMag: 6.0, maxMag: 9.5, startYear: 2001, endYear: 2024,
+      earthRadius: 100, markerCount: 0,
+      textures: {
+        day: 'https://unpkg.com/three-globe@2.31.0/example/img/earth-day.jpg',
+        night: 'https://unpkg.com/three-globe@2.31.0/example/img/earth-night.jpg',
+        specular: 'https://unpkg.com/three-globe@2.31.0/example/img/earth-specular.jpg',
+        clouds: 'https://unpkg.com/three-globe@2.31.0/example/img/earth-clouds.png',
+        topo: 'https://unpkg.com/three-globe@2.31.0/example/img/earth-topology.png',
+      },
+      apiUrl: 'https://earthquake.usgs.gov/fdsnws/event/1/query',
+      cacheKey: 'eq-data-v4', cacheExpiry: 7 * 86400000,
+    };
+
+    // ============ STATE ============
+    let quakes = [], filtered = [], markers = [], activePulses = [], trails = [];
+    let currentYear = CFG.startYear, isPlaying = false, speed = 1;
+    let lastFrame = 0, yearAccum = 0, hovered = null, focused = null;
+    let magMin = 6.0, magMax = 9.5, showDepth = true, showPlates = true, autoRot = true, trailMode = false;
+
+    // ============ THREE SETUP ============
+    const canvas = document.getElementById('canvas');
+    const renderer = new THREE.WebGLRenderer({ canvas, antialias: true, alpha: true, powerPreference: 'high-performance', logarithmicDepthBuffer: true });
+    renderer.setSize(window.innerWidth, window.innerHeight);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.15;
+    renderer.shadowMap.enabled = false;
+
+    const scene = new THREE.Scene();
+    const camera = new THREE.PerspectiveCamera(40, window.innerWidth / window.innerHeight, 0.1, 5000);
+    camera.position.set(0, 0, 320);
+
+    const controls = new OrbitControls(camera, canvas);
+    controls.enableDamping = true; controls.dampingFactor = 0.05;
+    controls.minDistance = 130; controls.maxDistance = 700;
+    controls.autoRotate = true; controls.autoRotateSpeed = 0.25;
+
+    // Post-processing
+    const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(window.innerWidth, window.innerHeight, { type: THREE.HalfFloatType }));
+    composer.addPass(new RenderPass(scene, camera));
+    const bloom = new UnrealBloomPass(new THREE.Vector2(window.innerWidth, window.innerHeight), 1.0, 0.3, 0.85);
+    composer.addPass(bloom);
+    const fxaa = new ShaderPass(FXAAShader);
+    fxaa.material.uniforms['resolution'].value.set(1 / window.innerWidth, 1 / window.innerHeight);
+    composer.addPass(fxaa);
+
+    // ============ TEXTURE LOADER ============
+    const texLoader = new THREE.TextureLoader();
+    texLoader.crossOrigin = 'anonymous';
+    const [dayTex, nightTex, specTex, cloudTex, topoTex] = await Promise.all([
+      loadTex(CFG.textures.day), loadTex(CFG.textures.night), loadTex(CFG.textures.specular),
+      loadTex(CFG.textures.clouds), loadTex(CFG.textures.topo),
+    ]);
+    [dayTex, nightTex, specTex, cloudTex, topoTex].forEach(t => { t.colorSpace = THREE.SRGBColorSpace; t.wrapS = t.wrapT = THREE.RepeatWrapping; t.anisotropy = renderer.capabilities.getMaxAnisotropy(); });
+    specTex.colorSpace = THREE.LinearSRGBColorSpace;
+    cloudTex.colorSpace = THREE.LinearSRGBColorSpace;
+    topoTex.colorSpace = THREE.LinearSRGBColorSpace;
+
+    function loadTex(url) {
+      return new Promise((res, rej) => texLoader.load(url, res, undefined, rej));
+    }
+
+    // ============ EARTH SHADER ============
+    const earthGeo = new THREE.SphereGeometry(CFG.earthRadius, 128, 128);
+    const earthMat = new THREE.ShaderMaterial({
+      uniforms: {
+        uDay: { value: dayTex }, uNight: { value: nightTex }, uSpec: { value: specTex },
+        uTopo: { value: topoTex }, uTime: { value: 0 }, uSunDir: { value: new THREE.Vector3(0.3, 0.4, 0.5).normalize() },
+        uRadius: { value: CFG.earthRadius }, uFocus: { value: new THREE.Vector3(0, -1, 0) }, uFocusStrength: { value: 0 },
+      },
+      vertexShader: `
+        varying vec3 vNormal; varying vec2 vUv; varying vec3 vWorldPos; varying vec3 vTangent; varying vec3 vBitangent;
+        void main() {
+          vNormal = normalize(normalMatrix * normal);
+          vUv = uv;
+          vWorldPos = (modelMatrix * vec4(position, 1.0)).xyz;
+          vec3 n = vNormal;
+          vec3 t = normalize(vec3(-n.z, 0.0, n.x));
+          vec3 b = cross(n, t);
+          vTangent = t; vBitangent = b;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform sampler2D uDay, uNight, uSpec, uTopo; uniform float uTime, uRadius; uniform vec3 uSunDir, uFocus; uniform float uFocusStrength;
+        varying vec3 vNormal; varying vec2 vUv; varying vec3 vWorldPos; varying vec3 vTangent; varying vec3 vBitangent;
+        // Noise
+        float hash(vec3 p) { return fract(sin(dot(p, vec3(127.1,311.7,74.7))) * 43758.5453); }
+        float noise(vec3 p) { vec3 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(mix(hash(i),hash(i+vec3(1,0,0)),f.x),mix(hash(i+vec3(0,1,0)),hash(i+vec3(1,1,0)),f.x),f.y),mix(mix(hash(i+vec3(0,0,1)),hash(i+vec3(1,0,1)),f.x),mix(hash(i+vec3(0,1,1)),hash(i+vec3(1,1,1)),f.x),f.y),f.z); }
+        float fbm(vec3 p) { float v=0,a=0.5; mat3 m=mat3(1.6,1.2,-1.2,-1.2,1.6,1.2,1.2,-1.2,1.6); for(int i=0;i<5;i++){ v+=a*noise(p); p=m*p*2.; a*=0.5; } return v; }
+        // Normal map from topology
+        vec3 getNormalMap(vec2 uv) {
+          float h = texture(uTopo, uv).r;
+          float eps = 1.0/512.0;
+          float hx = texture(uTopo, uv+vec2(eps,0)).r;
+          float hy = texture(uTopo, uv+vec2(0,eps)).r;
+          vec3 n = normalize(vec3(h-hx, h-hy, eps*2.0));
+          return n;
+        }
+        void main() {
+          vec3 n = normalize(vNormal);
+          // Tangent space normal from topology
+          vec3 tn = getNormalMap(vUv);
+          vec3 tsNormal = normalize(vTangent * tn.x + vBitangent * tn.y + n * tn.z);
+          n = mix(n, tsNormal, 0.6);
+          // Lighting
+          float NdotL = max(0.0, dot(n, uSunDir));
+          float dayFactor = smoothstep(-0.1, 0.1, NdotL);
+          // Base colors
+          vec3 dayCol = texture(uDay, vUv).rgb;
+          vec3 nightCol = texture(uNight, vUv).rgb;
+          vec3 spec = texture(uSpec, vUv).rgb;
+          // Topography enhancement
+          float topo = texture(uTopo, vUv).r;
+          vec3 landColor = mix(vec3(0.18,0.22,0.12), vec3(0.35,0.3,0.2), topo);
+          vec3 snowColor = vec3(0.85,0.9,0.95);
+          dayCol = mix(dayCol, landColor, smoothstep(0.01, 0.3, topo));
+          dayCol = mix(dayCol, snowColor, smoothstep(0.7, 0.9, topo));
+          // Specular highlights (ocean)
+          float specular = pow(max(0.0, dot(reflect(-uSunDir, n), normalize(cameraPosition - vWorldPos))), 32.0) * spec.r * 2.0;
+          specular *= 1.0 - smoothstep(0.0, 0.3, topo); // only ocean
+          // Night lights
+          vec3 cityLights = nightCol * (1.0 - dayFactor) * 1.2;
+          // Combine
+          vec3 color = mix(cityLights, dayCol + specular, dayFactor);
+          // Atmosphere rim
+          float fresnel = pow(1.0 - max(0.0, dot(n, normalize(cameraPosition - vWorldPos))), 3.0);
+          color += vec3(0.15, 0.28, 0.55) * fresnel * 0.5 * dayFactor;
+          // Focus highlight
+          float focusDist = distance(normalize(vWorldPos), normalize(uFocus));
+          float focusGlow = smoothstep(0.4, 0.0, focusDist) * uFocusStrength;
+          color += vec3(1.0, 0.6, 0.3) * focusGlow * 0.4;
+          gl_FragColor = vec4(color, 1.0);
+        }
+      `,
+    });
+    const earth = new THREE.Mesh(earthGeo, earthMat);
+    scene.add(earth);
+
+    // Clouds layer
+    const cloudGeo = new THREE.SphereGeometry(CFG.earthRadius * 1.015, 64, 64);
+    const cloudMat = new THREE.MeshStandardMaterial({
+      map: cloudTex, transparent: true, opacity: 0.45, depthWrite: false,
+      blending: THREE.NormalBlending, side: THREE.DoubleSide,
+    });
+    const clouds = new THREE.Mesh(cloudGeo, cloudMat);
+    scene.add(clouds);
+
+    // Atmosphere
+    const atmosGeo = new THREE.SphereGeometry(CFG.earthRadius * 1.08, 64, 64);
+    const atmosMat = new THREE.ShaderMaterial({
+      transparent: true, side: THREE.BackSide, depthWrite: false, blending: THREE.AdditiveBlending,
+      uniforms: { uCameraPos: { value: camera.position }, uTime: { value: 0 }, uSunDir: { value: new THREE.Vector3(0.3, 0.4, 0.5).normalize() } },
+      vertexShader: `varying vec3 vNormal; varying vec3 vWorldPos; void main(){ vNormal=normalize(normalMatrix*normal); vWorldPos=(modelMatrix*vec4(position,1.)).xyz; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.); }`,
+      fragmentShader: `
+        uniform vec3 uCameraPos, uSunDir; uniform float uTime; varying vec3 vNormal, vWorldPos;
+        void main() {
+          vec3 viewDir = normalize(uCameraPos - vWorldPos);
+          float fresnel = pow(1.0 - max(0.0, dot(vNormal, viewDir)), 2.5);
+          float daySide = max(0.0, dot(vNormal, uSunDir));
+          vec3 color = mix(vec3(0.1,0.2,0.4), vec3(0.3,0.5,0.9), daySide);
+          gl_FragColor = vec4(color, fresnel * 0.25);
+        }
+      `,
+    });
+    const atmosphere = new THREE.Mesh(atmosGeo, atmosMat);
+    scene.add(atmosphere);
+
+    // Stars
+    const starsGeo = new THREE.BufferGeometry();
+    const starCount = 4000;
+    const spos = new Float32Array(starCount * 3), ssiz = new Float32Array(starCount), scol = new Float32Array(starCount * 3);
+    for (let i = 0; i < starCount; i++) {
+      const r = 900 + Math.random() * 500;
+      const theta = Math.random() * Math.PI * 2;
+      const phi = Math.acos(2 * Math.random() - 1);
+      spos[i*3] = r * Math.sin(phi) * Math.cos(theta);
+      spos[i*3+1] = r * Math.sin(phi) * Math.sin(theta);
+      spos[i*3+2] = r * Math.cos(phi);
+      ssiz[i] = Math.random() * 1.8 + 0.4;
+      const c = Math.random();
+      scol[i*3] = c > 0.6 ? 1.0 : (c > 0.3 ? 1.0 : 0.7);
+      scol[i*3+1] = c > 0.6 ? 0.9 : (c > 0.3 ? 0.95 : 0.8);
+      scol[i*3+2] = c > 0.6 ? 0.7 : (c > 0.3 ? 0.9 : 1.0);
+    }
+    starsGeo.setAttribute('position', new THREE.BufferAttribute(spos, 3));
+    starsGeo.setAttribute('size', new THREE.BufferAttribute(ssiz, 1));
+    starsGeo.setAttribute('color', new THREE.BufferAttribute(scol, 3));
+    const starsMat = new THREE.PointsMaterial({ size: 1.2, vertexColors: true, transparent: true, opacity: 0.8, sizeAttenuation: true, depthWrite: false, blending: THREE.AdditiveBlending });
+    const stars = new THREE.Points(starsGeo, starsMat);
+    scene.add(stars);
+
+    // Plate boundaries (simple great circles)
+    const plateGroup = new THREE.Group();
+    scene.add(plateGroup);
+    const plateLines = [
+      // Major plate boundaries simplified
+      [[-180, -60], [180, -60]], // Pacific-Antarctic
+      [[-120, -60], [-120, 60]], // Pacific-Nazca
+      [[-70, -60], [-70, 10]],   // South America
+      [[10, -60], [10, 30]],     // Mid-Atlantic
+      [[120, -60], [120, 50]],   // Australia-Pacific
+      [[-180, 0], [180, 0]],     // Equator (reference)
+    ];
+    const plateMat = new THREE.LineBasicMaterial({ color: 0xffffff, opacity: 0.15, transparent: true, depthWrite: false });
+    plateLines.forEach(([a, b]) => {
+      const pts = [];
+      for (let t = 0; t <= 1; t += 0.02) {
+        const lat = THREE.MathUtils.lerp(a[1], b[1], t);
+        const lon = THREE.MathUtils.lerp(a[0], b[0], t);
+        pts.push(latLonToVec3(lat, lon, CFG.earthRadius * 1.005));
+      }
+      const geo = new THREE.BufferGeometry().setFromPoints(pts);
+      plateGroup.add(new THREE.Line(geo, plateMat));
+    });
+
+    // ============ MARKERS (InstancedMesh for performance) ============
+    const MAX_MARKERS = 5000;
+    const markerGeo = new THREE.CircleGeometry(1, 32);
+    const markerMat = new THREE.MeshBasicMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
+      color: 0xff6b6b, // overridden per instance
+    });
+    // We'll use individual meshes for ring animation flexibility
+    const markerGroup = new THREE.Group();
+    scene.add(markerGroup);
+
+    function latLonToVec3(lat, lon, r = CFG.earthRadius) {
+      const phi = (90 - lat) * THREE.MathUtils.DEG2RAD;
+      const theta = (180 - lon) * THREE.MathUtils.DEG2RAD;
+      return new THREE.Vector3(
+        r * Math.sin(phi) * Math.cos(theta),
+        r * Math.cos(phi),
+        r * Math.sin(phi) * Math.sin(theta)
+      );
+    }
+
+    function magColor(mag) {
+      if (mag >= 9) return new THREE.Color(0xff6b6b);
+      if (mag >= 8) return new THREE.Color(0xff9f43);
+      if (mag >= 7) return new THREE.Color(0xffd93d);
+      return new THREE.Color(0x6bcb77);
+    }
+
+    function depthColor(depth) {
+      // Shallow (red) -> Deep (blue)
+      const t = Math.min(depth / 700, 1);
+      return new THREE.Color().setHSL(0.6 - t * 0.6, 0.8, 0.5);
+    }
+
+    function createMarker(q) {
+      const pos = latLonToVec3(q.lat, q.lon, CFG.earthRadius + 0.8);
+      const color = showDepth ? depthColor(q.depth) : magColor(q.mag);
+      const baseSize = 1.2 * Math.pow(1.35, q.mag - 6);
+
+      // Ring (animated pulse)
+      const ringGeo = new THREE.RingGeometry(baseSize * 0.5, baseSize, 32);
+      const ringMat = new THREE.MeshBasicMaterial({
+        color: color, side: THREE.DoubleSide, transparent: true,
+        opacity: 0, depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+      const ring = new THREE.Mesh(ringGeo, ringMat);
+      ring.position.copy(pos);
+      ring.lookAt(0, 0, 0);
+      ring.userData = { q, baseSize, color, phase: 0, active: false, birth: 0 };
+
+      // Core
+      const coreGeo = new THREE.SphereGeometry(baseSize * 0.3, 16, 16);
+      const coreMat = new THREE.MeshBasicMaterial({
+        color: color, transparent: true, opacity: 0.9,
+        depthWrite: false, blending: THREE.AdditiveBlending,
+      });
+      const core = new THREE.Mesh(coreGeo, coreMat);
+      core.position.copy(pos);
+      core.userData = { q, ring };
+
+      // Trail (for trail mode)
+      let trail = null;
+      if (trailMode) {
+        const trailGeo = new THREE.RingGeometry(baseSize * 0.2, baseSize * 0.8, 16);
+        const trailMat = new THREE.MeshBasicMaterial({ color: color, side: THREE.DoubleSide, transparent: true, opacity: 0.3, depthWrite: false, blending: THREE.AdditiveBlending });
+        trail = new THREE.Mesh(trailGeo, trailMat);
+        trail.position.copy(pos);
+        trail.lookAt(0, 0, 0);
+        trail.userData = { q, maxScale: 1.5 };
+        trails.push(trail);
+        markerGroup.add(trail);
+      }
+
+      markerGroup.add(ring);
+      markerGroup.add(core);
+      return { ring, core, trail, q };
+    }
+
+    function triggerPulse(marker, delay = 0) {
+      const { ring } = marker;
+      const now = performance.now() / 1000;
+      ring.userData.birth = now + delay;
+      ring.userData.active = true;
+      ring.material.color.copy(ring.userData.color);
+      ring.scale.setScalar(0.01);
+      ring.material.opacity = 0;
+      activePulses.push(marker);
+    }
+
+    function updatePulses(time) {
+      for (let i = activePulses.length - 1; i >= 0; i--) {
+        const m = activePulses[i];
+        const { ring } = m;
+        const ud = ring.userData;
+        const elapsed = time - ud.birth;
+        if (elapsed < 0) continue;
+        if (elapsed > 2.5) {
+          ud.active = false;
+          ring.scale.setScalar(0.01);
+          ring.material.opacity = 0;
+          activePulses.splice(i, 1);
+          continue;
+        }
+        const p = elapsed / 2.5;
+        const e = 1 - Math.pow(1 - p, 3);
+        ring.scale.setScalar(0.01 + e * 2.5);
+        ring.material.opacity = 0.9 * (1 - e);
+      }
+      // Trails
+      if (trailMode) {
+        trails.forEach(t => {
+          const ud = t.userData;
+          const q = ud.q;
+          if (q.year === currentYear) {
+            const p = Math.sin(time * 2 + q.id * 0.1) * 0.5 + 0.5;
+            t.scale.setScalar(0.5 + p * ud.maxScale);
+            t.material.opacity = 0.2 + p * 0.3;
+          } else {
+            t.scale.setScalar(0.01);
+            t.material.opacity = 0;
+          }
+        });
+      }
+    }
+
+    // ============ DATA ============
+    async function fetchQuakes() {
+      try {
+        const cached = localStorage.getItem(CFG.cacheKey);
+        if (cached) {
+          const { data, ts } = JSON.parse(cached);
+          if (Date.now() - ts < CFG.cacheExpiry) {
+            updateLoad(100, '从缓存加载完成');
+            return data;
+          }
+        }
+      } catch (e) {}
+
+      updateLoad(10, '请求 USGS 数据...');
+      const params = new URLSearchParams({
+        format: 'geojson', starttime: `${CFG.startYear}-01-01`,
+        endtime: `${CFG.endYear}-12-31`, minmagnitude: CFG.minMag,
+        orderby: 'time', limit: '20000',
+      });
+      const res = await fetch(`${CFG.apiUrl}?${params}`);
+      if (!res.ok) throw new Error(`API ${res.status}`);
+      const gj = await res.json();
+      updateLoad(60, '处理数据...');
+      const events = gj.features
+        .filter(f => f.geometry?.coordinates?.length >= 2)
+        .map(f => {
+          const [lon, lat, depth] = f.geometry.coordinates;
+          const p = f.properties;
+          return { id: f.id, lat, lon, depth: depth || 0, mag: p.mag, time: p.time, place: p.place || '未知位置', year: new Date(p.time).getFullYear() };
+        })
+        .sort((a, b) => a.time - b.time);
+      updateLoad(90, '缓存数据...');
+      try { localStorage.setItem(CFG.cacheKey, JSON.stringify({ data: events, ts: Date.now() })); } catch (e) {}
+      updateLoad(100, '完成');
+      return events;
+    }
+
+    function updateLoad(pct, text) {
+      document.getElementById('load-bar').style.width = `${pct}%`;
+      document.getElementById('load-text').textContent = text;
+    }
+
+    function applyFilters() {
+      filtered = quakes.filter(q => q.mag >= magMin && q.mag <= magMax);
+      rebuildMarkers();
+      updateYearList();
+      updateStats();
+    }
+
+    function rebuildMarkers() {
+      // Dispose old
+      markers.forEach(m => { m.ring.geometry.dispose(); m.ring.material.dispose(); m.core.geometry.dispose(); m.core.material.dispose(); if (m.trail) { m.trail.geometry.dispose(); m.trail.material.dispose(); } });
+      trails.forEach(t => { t.geometry.dispose(); t.material.dispose(); });
+      markerGroup.clear();
+      markers = []; trails = []; activePulses = [];
+
+      filtered.forEach(q => markers.push(createMarker(q)));
+      CFG.markerCount = markers.length;
+    }
+
+    // ============ UI ============
+    function setYear(y, animateFocus = false) {
+      currentYear = Math.max(CFG.startYear, Math.min(CFG.endYear, y));
+      const p = (currentYear - CFG.startYear) / (CFG.endYear - CFG.startYear);
+      document.getElementById('timeline-fill').style.width = `${p * 100}%`;
+      const track = document.getElementById('timeline');
+      const handle = document.getElementById('timeline-handle');
+      handle.style.left = `${p * 100}%`;
+      document.getElementById('year-display').textContent = currentYear;
+      track.setAttribute('aria-valuenow', currentYear);
+
+      // Trigger pulses for this year
+      const yearQ = filtered.filter(q => q.year === currentYear);
+      yearQ.forEach((q, i) => {
+        const m = markers.find(m => m.q.id === q.id);
+        if (m) triggerPulse(m, i * 0.02);
+      });
+      updateYearList();
+      updateStats();
+
+      if (animateFocus && yearQ.length > 0) {
+        focusOnQuake(yearQ[0]);
+      }
+    }
+
+    function updateYearList() {
+      const list = document.getElementById('quake-list');
+      const yearQ = filtered.filter(q => q.year === currentYear).slice(0, 50);
+      list.innerHTML = yearQ.map(q => `
+        <div class="quake-item" data-id="${q.id}" role="option" tabindex="0">
+          <span class="quake-color" style="color:${magColor(q.mag).getStyle()}"></span>
+          <div class="quake-info">
+            <div class="quake-mag">M${q.mag.toFixed(1)}</div>
+            <div class="quake-place">${q.place}</div>
+          </div>
+          <div class="quake-meta">${new Date(q.time).toLocaleDateString('zh-CN')}</div>
+        </div>
+      `).join('');
+      list.querySelectorAll('.quake-item').forEach(el => {
+        el.addEventListener('click', () => focusOnQuake(quakes.find(q => q.id === el.dataset.id)));
+        el.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); el.click(); } });
+      });
+    }
+
+    function updateStats() {
+      const yearQ = filtered.filter(q => q.year === currentYear);
+      document.getElementById('stat-total').textContent = filtered.length.toLocaleString();
+      document.getElementById('stat-year').textContent = yearQ.length;
+      document.getElementById('stat-max').textContent = yearQ.length ? Math.max(...yearQ.map(q => q.mag)).toFixed(1) : '—';
+    }
+
+    function focusOnQuake(q) {
+      if (!q) return;
+      focused = q;
+      const pos = latLonToVec3(q.lat, q.lon, CFG.earthRadius * 1.5);
+      const target = latLonToVec3(q.lat, q.lon, 0);
+      // Animate camera
+      const startPos = camera.position.clone();
+      const startTarget = controls.target.clone();
+      const dur = 1200;
+      const start = performance.now();
+      function animateCam(now) {
+        const t = Math.min((now - start) / dur, 1);
+        const e = 1 - Math.pow(1 - t, 3);
+        camera.position.lerpVectors(startPos, pos, e);
+        controls.target.lerpVectors(startTarget, target, e);
+        controls.update();
+        // Focus highlight on earth
+        earthMat.uniforms.uFocus.value.copy(target.clone().normalize());
+        earthMat.uniforms.uFocusStrength.value = 1 - e * 0.5;
+        if (t < 1) requestAnimationFrame(animateCam);
+        else { earthMat.uniforms.uFocusStrength.value = 0; }
+      }
+      requestAnimationFrame(animateCam);
+      showTooltip(q);
+    }
+
+    // Tooltip
+    const tooltip = document.getElementById('tooltip');
+    const raycaster = new THREE.Raycaster();
+    const mouse = new THREE.Vector2();
+    function onPointerMove(e) {
+      const rect = canvas.getBoundingClientRect();
+      mouse.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+      mouse.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+      raycaster.setFromCamera(mouse, camera);
+      const cores = markers.map(m => m.core);
+      const hits = raycaster.intersectObjects(cores, false);
+      if (hits.length) {
+        const q = hits[0].object.userData.q;
+        if (hovered !== q) { hovered = q; showTooltip(q, e.clientX, e.clientY); }
+      } else if (hovered) {
+        hovered = null; hideTooltip();
+      }
+    }
+    function showTooltip(q, x, y) {
+      document.getElementById('tt-mag').textContent = `M${q.mag.toFixed(1)}`;
+      document.getElementById('tt-mag').style.color = magColor(q.mag).getStyle();
+      document.getElementById('tt-place').textContent = q.place;
+      document.getElementById('tt-time').textContent = new Date(q.time).toLocaleString('zh-CN', { timeZone: 'UTC' }) + ' UTC';
+      document.getElementById('tt-depth').textContent = `深度 ${q.depth.toFixed(0)} km`;
+      tooltip.style.left = `${x}px`;
+      tooltip.style.top = `${y}px`;
+      tooltip.classList.add('visible');
+      tooltip.setAttribute('aria-hidden', 'false');
+    }
+    function hideTooltip() {
+      tooltip.classList.remove('visible');
+      tooltip.setAttribute('aria-hidden', 'true');
+    }
+    canvas.addEventListener('pointermove', onPointerMove);
+    canvas.addEventListener('pointerleave', hideTooltip);
+
+    // Timeline interaction
+    const timeline = document.getElementById('timeline');
+    const handle = document.getElementById('timeline-handle');
+    let dragging = false;
+    function onTimelineDown(e) {
+      dragging = true;
+      handle.style.transition = 'none';
+      onTimelineMove(e);
+    }
+    function onTimelineMove(e) {
+      if (!dragging) return;
+      const rect = timeline.getBoundingClientRect();
+      const p = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+      const y = Math.round(CFG.startYear + p * (CFG.endYear - CFG.startYear));
+      setYear(y);
+    }
+    function onTimelineUp() {
+      dragging = false;
+      handle.style.transition = '';
+    }
+    timeline.addEventListener('pointerdown', onTimelineDown);
+    window.addEventListener('pointermove', onTimelineMove);
+    window.addEventListener('pointerup', onTimelineUp);
+    timeline.addEventListener('keydown', e => {
+      if (e.key === 'ArrowLeft') setYear(currentYear - 1);
+      else if (e.key === 'ArrowRight') setYear(currentYear + 1);
+      else if (e.key === 'Home') setYear(CFG.startYear);
+      else if (e.key === 'End') setYear(CFG.endYear);
+    });
+
+    // Timeline marks
+    const marksEl = document.getElementById('timeline-marks');
+    for (let y = CFG.startYear; y <= CFG.endYear; y++) {
+      const p = (y - CFG.startYear) / (CFG.endYear - CFG.startYear);
+      const m = document.createElement('div');
+      m.className = 'timeline-mark' + (y % 5 === 0 ? ' major' : '');
+      m.style.left = `${p * 100}%`;
+      if (y % 5 === 0) {
+        const lbl = document.createElement('div');
+        lbl.className = 'timeline-mark-label';
+        lbl.textContent = y;
+        m.appendChild(lbl);
+      }
+      marksEl.appendChild(m);
+    }
+
+    // Controls
+    const btnPlay = document.getElementById('btn-play');
+    const playI = document.getElementById('play-icon');
+    const pauseI = document.getElementById('pause-icon');
+    function togglePlay() {
+      isPlaying = !isPlaying;
+      playI.style.display = isPlaying ? 'none' : 'block';
+      pauseI.style.display = isPlaying ? 'block' : 'none';
+      btnPlay.setAttribute('aria-label', isPlaying ? '暂停' : '播放');
+      if (isPlaying) lastFrame = performance.now();
+    }
+    function step(n) {
+      const ny = currentYear + n;
+      if (ny > CFG.endYear) { setYear(CFG.startYear); if (isPlaying) togglePlay(); }
+      else if (ny < CFG.startYear) setYear(CFG.endYear);
+      else setYear(ny);
+    }
+    btnPlay.addEventListener('click', togglePlay);
+    document.getElementById('btn-forward').addEventListener('click', () => step(1));
+    document.getElementById('btn-rewind').addEventListener('click', () => step(-1));
+    document.getElementById('btn-first').addEventListener('click', () => setYear(CFG.startYear));
+    document.getElementById('btn-last').addEventListener('click', () => setYear(CFG.endYear));
+    document.getElementById('speed-select').addEventListener('change', e => { speed = parseFloat(e.target.value); });
+
+    // Filters
+    document.getElementById('mag-min').addEventListener('input', e => {
+      magMin = parseFloat(e.target.value);
+      document.getElementById('mag-min-val').textContent = magMin.toFixed(1);
+      if (magMin > magMax) { magMax = magMin; document.getElementById('mag-max').value = magMax; document.getElementById('mag-max-val').textContent = magMax.toFixed(1); }
+      applyFilters();
+    });
+    document.getElementById('mag-max').addEventListener('input', e => {
+      magMax = parseFloat(e.target.value);
+      document.getElementById('mag-max-val').textContent = magMax.toFixed(1);
+      if (magMax < magMin) { magMin = magMax; document.getElementById('mag-min').value = magMin; document.getElementById('mag-min-val').textContent = magMin.toFixed(1); }
+      applyFilters();
+    });
+    document.getElementById('show-depth').addEventListener('change', e => { showDepth = e.target.checked; rebuildMarkers(); });
+    document.getElementById('show-plates').addEventListener('change', e => { showPlates = e.target.checked; plateGroup.visible = showPlates; });
+    document.getElementById('auto-rotate').addEventListener('change', e => { autoRot = e.target.checked; controls.autoRotate = autoRot; });
+    document.getElementById('trail-mode').addEventListener('change', e => { trailMode = e.target.checked; applyFilters(); });
+
+    // Panel toggle (mobile)
+    const panel = document.getElementById('side-panel');
+    const toggle = document.getElementById('panel-toggle');
+    toggle.addEventListener('click', () => panel.classList.toggle('open'));
+    if (window.innerWidth <= 768) toggle.style.display = 'flex';
+
+    // Keyboard
+    window.addEventListener('keydown', e => {
+      if (e.target.tagName === 'SELECT' || e.target.tagName === 'INPUT') return;
+      if (e.code === 'Space') { e.preventDefault(); togglePlay(); }
+      else if (e.code === 'ArrowRight') step(1);
+      else if (e.code === 'ArrowLeft') step(-1);
+      else if (e.code === 'Home') setYear(CFG.startYear);
+      else if (e.code === 'End') setYear(CFG.endYear);
+      else if (e.code === 'KeyR') { setYear(CFG.startYear); if (isPlaying) togglePlay(); }
+      else if (e.code === 'KeyF') { if (focused) focusOnQuake(focused); }
+    });
+
+    // Resize
+    function onResize() {
+      const w = window.innerWidth, h = window.innerHeight;
+      camera.aspect = w / h; camera.updateProjectionMatrix();
+      renderer.setSize(w, h); composer.setSize(w, h);
+      fxaa.material.uniforms['resolution'].value.set(1 / w, 1 / h);
+      if (w <= 768) toggle.style.display = 'flex'; else toggle.style.display = 'none';
+    }
+    window.addEventListener('resize', onResize);
+
+    // ============ ANIMATION LOOP ============
+    function animate(now) {
+      requestAnimationFrame(animate);
+      const dt = (now - lastFrame) / 1000;
+      lastFrame = now;
+
+      // Time uniforms
+      const t = now / 1000;
+      earthMat.uniforms.uTime.value = t;
+      atmosMat.uniforms.uTime.value = t;
+      atmosMat.uniforms.uCameraPos.value.copy(camera.position);
+
+      // Clouds rotation
+      clouds.rotation.y += 0.00003;
+      stars.rotation.y += 0.000015;
+
+      // Controls
+      controls.update();
+
+      // Playback
+      if (isPlaying) {
+        yearAccum += dt * speed;
+        if (yearAccum >= 1) { yearAccum = 0; step(1); }
+      }
+
+      // Pulses
+      updatePulses(t);
+
+      composer.render(dt);
+    }
+
+    // ============ INIT ============
+    async function init() {
+      try {
+        quakes = await fetchQuakes();
+        filtered = [...quakes];
+        rebuildMarkers();
+        setYear(CFG.startYear);
+        document.getElementById('loading').classList.add('hidden');
+        setTimeout(() => document.getElementById('loading').remove(), 500);
+        animate(performance.now());
+      } catch (err) {
+        console.error(err);
+        document.getElementById('load-text').textContent = `加载失败: ${err.message}`;
+        document.getElementById('load-bar').style.background = 'linear-gradient(90deg, #ff6b6b, #ff6b6b)';
+        document.getElementById('loading').innerHTML += '<button class="btn primary" style="margin-top:16px" onclick="location.reload()">重试</button>';
+      }
+    }
+    init();
+  </script>
+</body>
+</html>
